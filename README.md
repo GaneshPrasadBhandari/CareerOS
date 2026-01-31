@@ -96,6 +96,50 @@ CareerOS consists of six major layers:
 
 ---
 
+
+## FINAL, STORY-DRIVEN LAYOUT
+┌──────────────────────────┐
+│ 0. User                  │
+└─────────────┬────────────┘
+              ↓
+┌──────────────────────────┐
+│ 1. Entry Layer           │
+└─────────────┬────────────┘
+              ↓
+┌──────────────────────────┐
+│ 2. Orchestration Core    │  ← THE BRAIN
+└─────────────┬────────────┘
+              ↓
+┌──────────────────────────┐
+│ 3. Manager Layer         │  ← DECISION MAKERS
+└─────────────┬────────────┘
+              ↓
+┌──────────────────────────┐
+│ 4. Agent Layer           │  ← EXECUTION
+└─────────────┬────────────┘
+              ↓
+┌──────────────────────────┐
+│ 5. Human Approval Gates  │  ← PAUSE POINTS
+└─────────────┬────────────┘
+              ↓
+┌──────────────────────────┐
+│ 6. Execution & Tracking  │
+└─────────────┬────────────┘
+              ↓
+┌──────────────────────────┐
+│ 7. Analytics & Learning  │
+└─────────────┬────────────┘
+              ↺ (feedback)
+┌──────────────────────────┐
+│ 3. Manager Layer         │  ← STRATEGY UPDATE
+└──────────────────────────┘
+
+Right-side (vertical overlay):
+- 8. Memory & Models
+- 9. Governance & Ops
+
+
+
 ## 4. Core Capabilities (MVP + Startup Path)
 
 ### Automated
