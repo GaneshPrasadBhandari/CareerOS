@@ -97,6 +97,7 @@ CareerOS consists of six major layers:
 ---
 
 
+
 ## FINAL, STORY-DRIVEN LAYOUT
 <pre>
 <b>FINAL, STORY-DRIVEN LAYOUT</b>
@@ -145,9 +146,6 @@ CareerOS consists of six major layers:
 This is the only layout that will feel "right".
 </pre>
 
-Right-side (vertical overlay):
-- 8. Memory & Models
-- 9. Governance & Ops
 
 
 
