@@ -98,41 +98,52 @@ CareerOS consists of six major layers:
 
 
 ## FINAL, STORY-DRIVEN LAYOUT
-┌──────────────────────────┐
-│ 0. User                  │
-└─────────────┬────────────┘
-              ↓
-┌──────────────────────────┐
-│ 1. Entry Layer           │
-└─────────────┬────────────┘
-              ↓
-┌──────────────────────────┐
-│ 2. Orchestration Core    │  ← THE BRAIN
-└─────────────┬────────────┘
-              ↓
-┌──────────────────────────┐
-│ 3. Manager Layer         │  ← DECISION MAKERS
-└─────────────┬────────────┘
-              ↓
-┌──────────────────────────┐
-│ 4. Agent Layer           │  ← EXECUTION
-└─────────────┬────────────┘
-              ↓
-┌──────────────────────────┐
-│ 5. Human Approval Gates  │  ← PAUSE POINTS
-└─────────────┬────────────┘
-              ↓
-┌──────────────────────────┐
-│ 6. Execution & Tracking  │
-└─────────────┬────────────┘
-              ↓
-┌──────────────────────────┐
-│ 7. Analytics & Learning  │
-└─────────────┬────────────┘
-              ↺ (feedback)
-┌──────────────────────────┐
-│ 3. Manager Layer         │  ← STRATEGY UPDATE
-└──────────────────────────┘
+<pre>
+<b>FINAL, STORY-DRIVEN LAYOUT</b>
+
+┌───────────────────────────────┐
+│ <span style="color:#ff4d6d;"><b>0.</b></span> User                        │
+└───────────────────────────────┘
+               ↓
+┌───────────────────────────────┐
+│ <span style="color:#ff4d6d;"><b>1.</b></span> Entry Layer                 │
+└───────────────────────────────┘
+               ↓
+┌───────────────────────────────┐  ← THE BRAIN
+│ <span style="color:#ff4d6d;"><b>2.</b></span> Orchestration Core          │
+└───────────────────────────────┘
+               ↓
+┌───────────────────────────────┐  ← DECISION MAKERS
+│ <span style="color:#ff4d6d;"><b>3.</b></span> Manager Layer               │
+└───────────────────────────────┘
+               ↓
+┌───────────────────────────────┐  ← EXECUTION
+│ <span style="color:#ff4d6d;"><b>4.</b></span> Agent Layer                 │
+└───────────────────────────────┘
+               ↓
+┌───────────────────────────────┐  ← <span style="color:#2dd4bf;"><b>PAUSE</b></span> POINTS
+│ <span style="color:#ff4d6d;"><b>5.</b></span> Human Approval Gates        │
+└───────────────────────────────┘
+               ↓
+┌───────────────────────────────┐
+│ <span style="color:#ff4d6d;"><b>6.</b></span> Execution &amp; Tracking        │
+└───────────────────────────────┘
+               ↓
+┌───────────────────────────────┐
+│ <span style="color:#ff4d6d;"><b>7.</b></span> Analytics &amp; Learning        │
+└───────────────────────────────┘
+               ↺ (feedback)
+┌───────────────────────────────┐  ← STRATEGY UPDATE
+│ <span style="color:#ff4d6d;"><b>3.</b></span> Manager Layer               │
+└───────────────────────────────┘
+
+
+<span style="color:#2dd4bf;"><b>Right-side (vertical overlay):</b></span>
+- <span style="color:#ff4d6d;"><b>8.</b></span> Memory &amp; Models
+- <span style="color:#ff4d6d;"><b>9.</b></span> Governance &amp; Ops
+
+This is the only layout that will feel "right".
+</pre>
 
 Right-side (vertical overlay):
 - 8. Memory & Models
