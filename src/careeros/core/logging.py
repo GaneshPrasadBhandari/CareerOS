@@ -14,24 +14,16 @@ def new_run_id() -> str:
 def get_logger(name: str = "careeros") -> logging.Logger:
     logger = logging.getLogger(name)
     if logger.handlers:
-        return logger  # already configured
+        return logger
 
     logger.setLevel(logging.INFO)
-
     handler = logging.StreamHandler(sys.stdout)
-    formatter = logging.Formatter("%(message)s")
-    handler.setFormatter(formatter)
-
+    handler.setFormatter(logging.Formatter("%(message)s"))
     logger.addHandler(handler)
     logger.propagate = False
     return logger
 
 
 def log_event(logger: logging.Logger, event: str, run_id: str, **kwargs) -> None:
-    payload = {
-        "ts": datetime.utcnow().isoformat() + "Z",
-        "event": event,
-        "run_id": run_id,
-        **kwargs,
-    }
+    payload = {"ts": datetime.utcnow().isoformat() + "Z", "event": event, "run_id": run_id, **kwargs}
     logger.info(json.dumps(payload, ensure_ascii=False))

@@ -21,3 +21,38 @@ if st.button("Check API Version", key="btn_version"):
         st.json(r.json())
     except Exception as e:
         st.error(f"API not reachable: {e}")
+
+
+st.subheader("L1 Intake (Create Intake Bundle)")
+
+name = st.text_input("Candidate name (optional)")
+roles = st.text_input("Target roles (comma-separated)", value="GenAI Solution Architect, ML Engineer")
+location = st.text_input("Preferred location", value="USA")
+remote_only = st.checkbox("Remote only", value=True)
+salary_min = st.number_input("Salary min", min_value=0, value=120000, step=5000)
+salary_max = st.number_input("Salary max", min_value=0, value=180000, step=5000)
+work_auth = st.text_input("Work authorization (optional)", value="F1 CPT (Jan-May 2026), OPT after May 2026")
+
+if st.button("Create Intake Bundle", key="btn_intake"):
+    payload = {
+        "version": "v1",
+        "candidate_name": name or None,
+        "target_roles": [r.strip() for r in roles.split(",") if r.strip()],
+        "target_industries": [],
+        "constraints": {
+            "location": location or None,
+            "remote_only": remote_only,
+            "salary_min": int(salary_min) if salary_min else None,
+            "salary_max": int(salary_max) if salary_max else None,
+            "work_auth": work_auth or None,
+            "relocation_ok": False,
+        },
+        "links": {"linkedin_url": None, "github_url": None, "portfolio_url": None},
+        "notes": None,
+    }
+
+    try:
+        r = httpx.post(f"{api_url}/intake", json=payload, timeout=10)
+        st.json(r.json())
+    except Exception as e:
+        st.error(f"Failed to create intake bundle: {e}")

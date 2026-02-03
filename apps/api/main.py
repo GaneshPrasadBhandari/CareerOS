@@ -2,6 +2,9 @@ from fastapi import FastAPI
 
 from src.careeros.core.settings import load_settings
 from src.careeros.core.logging import get_logger, new_run_id, log_event
+from src.careeros.intake.schema import IntakeBundle
+from src.careeros.intake.service import write_intake_bundle
+
 
 settings = load_settings()
 logger = get_logger()
@@ -35,3 +38,11 @@ def version():
         "orchestration_mode": settings.orchestration_mode,
         "run_id": run_id,
     }
+
+
+@app.post("/intake")
+def create_intake(bundle: IntakeBundle):
+    run_id = new_run_id()
+    out_path = write_intake_bundle(bundle)
+    log_event(logger, "intake_created", run_id, path=str(out_path))
+    return {"status": "ok", "path": str(out_path), "run_id": run_id}

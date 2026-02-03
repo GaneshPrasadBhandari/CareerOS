@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from pydantic import BaseModel
-from dotenv import load_dotenv
 import os
+from dotenv import load_dotenv
+from pydantic import BaseModel
 
 
 class Settings(BaseModel):
@@ -10,7 +10,6 @@ class Settings(BaseModel):
     demo_mode: bool = True
     orchestration_mode: str = "pipeline"
 
-    # keys (optional at Phase 0)
     openai_api_key: str | None = None
     huggingface_api_key: str | None = None
     tavily_api_key: str | None = None
@@ -18,13 +17,13 @@ class Settings(BaseModel):
 
 
 def load_settings() -> Settings:
-    # loads .env if present, without failing if missing
+    # Loads .env into environment variables (if .env exists)
     load_dotenv(override=False)
 
-    def as_bool(v: str | None, default: bool) -> bool:
-        if v is None:
+    def as_bool(value: str | None, default: bool) -> bool:
+        if value is None:
             return default
-        return v.strip().lower() in {"1", "true", "yes", "y", "on"}
+        return value.strip().lower() in {"1", "true", "yes", "y", "on"}
 
     return Settings(
         env=os.getenv("ENV", "dev"),
