@@ -56,3 +56,17 @@ if st.button("Create Intake Bundle", key="btn_intake"):
         st.json(r.json())
     except Exception as e:
         st.error(f"Failed to create intake bundle: {e}")
+
+
+st.subheader("L2 Parsing (Resume Text → Evidence Profile)")
+
+candidate = st.text_input("Candidate name", value="")
+resume_text = st.text_area("Paste resume text here", height=200)
+
+if st.button("Build Profile", key="btn_profile"):
+    payload = {"candidate_name": candidate or None, "resume_text": resume_text}
+    try:
+        r = httpx.post(f"{api_url}/profile", json=payload, timeout=20)
+        st.json(r.json())
+    except Exception as e:
+        st.error(f"Failed to build profile: {e}")

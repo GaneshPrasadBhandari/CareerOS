@@ -1,9 +1,14 @@
 from fastapi import FastAPI
 
-from src.careeros.core.settings import load_settings
-from src.careeros.core.logging import get_logger, new_run_id, log_event
-from src.careeros.intake.schema import IntakeBundle
-from src.careeros.intake.service import write_intake_bundle
+from careeros.core.settings import load_settings
+from careeros.core.logging import get_logger, new_run_id, log_event
+
+from careeros.intake.schema import IntakeBundle
+from careeros.intake.service import write_intake_bundle
+
+from pydantic import BaseModel
+from careeros.parsing.service import build_profile_from_text, write_profile
+
 
 
 settings = load_settings()
@@ -46,3 +51,16 @@ def create_intake(bundle: IntakeBundle):
     out_path = write_intake_bundle(bundle)
     log_event(logger, "intake_created", run_id, path=str(out_path))
     return {"status": "ok", "path": str(out_path), "run_id": run_id}
+
+
+class ProfileRequest(BaseModel):
+    candidate_name: str | None = None
+    resume_text: str
+
+@app.post("/profile")
+def create_profile(req: ProfileRequest):
+    run_id = new_run_id()
+    profile = build_profile_from_text(req.resume_text, candidate_name=req.candidate_name)
+    out_path = write_profile(profile)
+    log_event(logger, "profile_created", run_id, path=str(out_path), skills=len(profile.skills))
+    return {"status": "ok", "path": str(out_path), "skills": profile.skills, "run_id": run_id}
