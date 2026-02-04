@@ -11,6 +11,8 @@ from careeros.parsing.service import build_profile_from_text, write_profile
 
 from careeros.core.logging import get_logger, new_run_id, log_event, log_exception
 
+from pydantic import BaseModel
+from careeros.jobs.service import build_jobpost_from_text, write_jobpost
 
 
 
@@ -89,3 +91,17 @@ def create_profile(req: ProfileRequest):
 @app.get("/debug/error")
 def debug_error():
     raise RuntimeError("Forced error to verify logging + exception handling")
+
+
+
+class JobIngestRequest(BaseModel):
+    url: str | None = None
+    job_text: str
+
+@app.post("/jobs/ingest")
+def ingest_job(req: JobIngestRequest):
+    run_id = new_run_id()
+    job = build_jobpost_from_text(req.job_text, url=req.url)
+    out_path = write_jobpost(job)
+    log_event(logger, "job_ingested", run_id, path=str(out_path), keywords=len(job.keywords))
+    return {"status": "ok", "path": str(out_path), "keywords": job.keywords, "run_id": run_id}
