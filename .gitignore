@@ -206,3 +206,40 @@ marimo/_static/
 marimo/_lsp/
 __marimo__/
 .DS_Store
+
+
+# CareerOS runtime artifacts (do not commit)
+logs/
+outputs/
+artifacts/
+exports/
+
+# MLflow local tracking (if you run local file-based tracking)
+mlruns/
+
+# DVC local metadata/cache (keep .dvc files, ignore cache)
+.dvc/cache/
+.dvc/tmp/
+
+# Streamlit runtime
+.streamlit/secrets.toml
+.streamlit/.cache/
+
+# Local notebooks outputs
+notebooks/**/.ipynb_checkpoints/
+
+
+outputs/*
+!outputs/**/.gitkeep
+
+
+# ===== CareerOS: runtime artifacts (do not commit) =====
+
+# ===== CareerOS: MLflow local tracking (do not commit) =====
+
+# ===== CareerOS: DVC cache/temp (do not commit) =====
+
+# ===== CareerOS: Streamlit secrets/cache (do not commit) =====
+
+
+
