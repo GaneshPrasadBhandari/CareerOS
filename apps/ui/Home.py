@@ -125,3 +125,14 @@ if st.button("Generate Application Package (Top-1 job)", key="btn_generate_pkg")
         st.json(r.json())
     except Exception as e:
         st.error(f"Failed to generate package: {e}")
+
+
+#Add Streamlit section P7
+st.subheader("P7 Guardrails (Validate Application Package)")
+
+if st.button("Validate Latest Package", key="btn_guardrails"):
+    try:
+        r = httpx.post(f"{api_url}/guardrails/validate", timeout=60)
+        st.json(r.json())
+    except Exception as e:
+        st.error(f"Guardrails validation failed: {e}")

@@ -29,6 +29,11 @@ from careeros.parsing.schema import EvidenceProfile
 from careeros.jobs.schema import JobPost
 from careeros.generation.service import build_package, write_application_package
 
+from careeros.guardrails.service import validate_package_against_evidence, write_validation_report, latest
+from careeros.guardrails.schema import ValidationReport
+from careeros.generation.schema import ApplicationPackage
+
+
 
 
 settings = load_settings()
@@ -211,3 +216,29 @@ def generate_package():
     out_path = write_application_package(pkg)
     log_event(logger, "package_generated", run_id, path=str(out_path), job_path=job_fp)
     return {"status": "ok", "path": str(out_path), "run_id": run_id}
+
+
+#Add API endpoint: validate latest package
+#Add endpoint
+@app.post("/guardrails/validate")
+def validate_latest_package():
+    run_id = new_run_id()
+
+    pkg_fp = latest("exports/packages/application_package_v1_*.json")
+    profile_fp = latest("outputs/profile/profile_v1_*.json")
+
+    if not pkg_fp or not profile_fp:
+        return {"status": "error", "message": "Missing package or profile artifacts. Run P2 and P6 first.", "run_id": run_id}
+
+    profile = EvidenceProfile.model_validate_json(Path(profile_fp).read_text(encoding="utf-8"))
+    pkg = ApplicationPackage.model_validate_json(Path(pkg_fp).read_text(encoding="utf-8"))
+
+    report = validate_package_against_evidence(profile, pkg, run_id, pkg_fp)
+    out_path = write_validation_report(report)
+
+    if report.status == "blocked":
+        log_event(logger, "guardrails_blocked", run_id, path=str(out_path))
+        return {"status": "blocked", "path": str(out_path), "run_id": run_id, "findings": [f.model_dump() for f in report.findings]}
+
+    log_event(logger, "guardrails_passed", run_id, path=str(out_path))
+    return {"status": "pass", "path": str(out_path), "run_id": run_id}
