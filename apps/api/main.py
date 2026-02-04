@@ -22,6 +22,14 @@ from careeros.parsing.schema import EvidenceProfile
 from careeros.jobs.schema import JobPost
 from careeros.matching.service import compute_match, write_match_result
 
+from careeros.ranking.service import rank_all_jobs, write_shortlist
+
+from careeros.ranking.schema import RankedShortlist
+from careeros.parsing.schema import EvidenceProfile
+from careeros.jobs.schema import JobPost
+from careeros.generation.service import build_package, write_application_package
+
+
 
 settings = load_settings()
 logger = get_logger()
@@ -138,3 +146,68 @@ def run_match():
 
     log_event(logger, "match_completed", run_id, score=result.score, path=str(out_path))
     return {"status": "ok", "path": str(out_path), "score": result.score, "run_id": run_id, "overlap": result.overlap_skills}
+
+
+
+#Add API endpoint: /rank/run for raniking jobs
+@app.post("/rank/run")
+def run_ranking(top_n: int = 3):
+    run_id = new_run_id()
+
+    profile_files = sorted(glob.glob("outputs/profile/profile_v1_*.json"))
+    if not profile_files:
+        return {"status": "error", "message": "No profile artifacts found. Run L2 first.", "run_id": run_id}
+
+    profile_path = profile_files[-1]
+
+    try:
+        shortlist = rank_all_jobs(profile_path=profile_path, top_n=top_n, run_id=run_id)
+        out_path = write_shortlist(shortlist)
+        log_event(logger, "ranking_completed", run_id, top_n=top_n, path=str(out_path))
+        return {"status": "ok", "path": str(out_path), "run_id": run_id, "top_n": top_n, "items": [i.model_dump() for i in shortlist.items]}
+    except Exception as e:
+        log_exception(logger, "ranking_failed", run_id, e)
+        return {"status": "error", "message": str(e), "run_id": run_id}
+
+
+
+
+#Add API endpoint: generate package for Top-1 job
+#Add helper to get latest file
+def latest(pattern: str) -> str | None:
+    files = sorted(glob.glob(pattern))
+    return files[-1] if files else None
+
+#Add endpoint
+@app.post("/generate/package")
+def generate_package():
+    run_id = new_run_id()
+
+    shortlist_fp = latest("outputs/ranking/shortlist_v1_*.json")
+    if not shortlist_fp:
+        return {"status": "error", "message": "No shortlist found. Run P5 ranking first.", "run_id": run_id}
+
+    shortlist = RankedShortlist.model_validate_json(Path(shortlist_fp).read_text(encoding="utf-8"))
+    if not shortlist.items:
+        return {"status": "error", "message": "Shortlist is empty.", "run_id": run_id}
+
+    # Top-1 job
+    top_item = shortlist.items[0]
+    profile_fp = shortlist.profile_path
+    job_fp = top_item.job_path
+
+    profile = EvidenceProfile.model_validate_json(Path(profile_fp).read_text(encoding="utf-8"))
+    job = JobPost.model_validate_json(Path(job_fp).read_text(encoding="utf-8"))
+
+    pkg = build_package(
+        profile=profile,
+        job=job,
+        run_id=run_id,
+        profile_path=profile_fp,
+        job_path=job_fp,
+        overlap_skills=top_item.overlap_skills,
+    )
+
+    out_path = write_application_package(pkg)
+    log_event(logger, "package_generated", run_id, path=str(out_path), job_path=job_fp)
+    return {"status": "ok", "path": str(out_path), "run_id": run_id}

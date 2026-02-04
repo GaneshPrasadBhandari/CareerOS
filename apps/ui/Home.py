@@ -101,3 +101,27 @@ if st.button("Run Matching (latest profile + latest job)", key="btn_match"):
         st.json(r.json())
     except Exception as e:
         st.error(f"Failed to run matching: {e}")
+
+
+#add Streamlit L5 section
+st.subheader("L5 Ranking (All Jobs → Ranked Shortlist)")
+
+top_n = st.number_input("Top N", min_value=1, max_value=10, value=3, step=1)
+
+if st.button("Run Ranking (latest profile + all jobs)", key="btn_rank"):
+    try:
+        r = httpx.post(f"{api_url}/rank/run", params={"top_n": int(top_n)}, timeout=60)
+        st.json(r.json())
+    except Exception as e:
+        st.error(f"Failed to run ranking: {e}")
+
+
+#Add Streamlit P6 section
+st.subheader("P6 Generation (Top Job → Application Package)")
+
+if st.button("Generate Application Package (Top-1 job)", key="btn_generate_pkg"):
+    try:
+        r = httpx.post(f"{api_url}/generate/package", timeout=60)
+        st.json(r.json())
+    except Exception as e:
+        st.error(f"Failed to generate package: {e}")
