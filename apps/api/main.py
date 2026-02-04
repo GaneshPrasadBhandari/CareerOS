@@ -14,6 +14,13 @@ from careeros.core.logging import get_logger, new_run_id, log_event, log_excepti
 from pydantic import BaseModel
 from careeros.jobs.service import build_jobpost_from_text, write_jobpost
 
+from pathlib import Path
+import glob
+import json
+
+from careeros.parsing.schema import EvidenceProfile
+from careeros.jobs.schema import JobPost
+from careeros.matching.service import compute_match, write_match_result
 
 
 settings = load_settings()
@@ -105,3 +112,29 @@ def ingest_job(req: JobIngestRequest):
     out_path = write_jobpost(job)
     log_event(logger, "job_ingested", run_id, path=str(out_path), keywords=len(job.keywords))
     return {"status": "ok", "path": str(out_path), "keywords": job.keywords, "run_id": run_id}
+
+
+
+#Add API endpoint: run matching on the latest artifacts
+def latest_file(pattern: str) -> str | None:
+    files = sorted(glob.glob(pattern))
+    return files[-1] if files else None
+
+@app.post("/match/run")
+def run_match():
+    run_id = new_run_id()
+
+    profile_fp = latest_file("outputs/profile/profile_v1_*.json")
+    job_fp = latest_file("outputs/jobs/job_post_v1_*.json")
+
+    if not profile_fp or not job_fp:
+        return {"status": "error", "message": "Missing profile or job artifacts. Run L2 and L3 first.", "run_id": run_id}
+
+    profile = EvidenceProfile.model_validate_json(Path(profile_fp).read_text(encoding="utf-8"))
+    job = JobPost.model_validate_json(Path(job_fp).read_text(encoding="utf-8"))
+
+    result = compute_match(profile, job, run_id, profile_fp, job_fp)
+    out_path = write_match_result(result)
+
+    log_event(logger, "match_completed", run_id, score=result.score, path=str(out_path))
+    return {"status": "ok", "path": str(out_path), "score": result.score, "run_id": run_id, "overlap": result.overlap_skills}

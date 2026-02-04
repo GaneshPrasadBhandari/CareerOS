@@ -23,6 +23,8 @@ if st.button("Check API Version", key="btn_version"):
         st.error(f"API not reachable: {e}")
 
 
+
+#Add Streamlit section L1
 st.subheader("L1 Intake (Create Intake Bundle)")
 
 name = st.text_input("Candidate name (optional)")
@@ -58,7 +60,7 @@ if st.button("Create Intake Bundle", key="btn_intake"):
         st.error(f"Failed to create intake bundle: {e}")
 
 
-
+#Add Streamlit section L2
 st.subheader("L2 Parsing (Resume Text → Evidence Profile)")
 
 candidate = st.text_input("Candidate name", value="")
@@ -73,6 +75,7 @@ if st.button("Build Profile", key="btn_profile"):
         st.error(f"Failed to build profile: {e}")
 
 
+#Add Streamlit section L3
 st.subheader("L3 Jobs (Paste Job Description → JobPost Artifact)")
 
 job_url = st.text_input("Job URL (optional)", value="", key="job_url")
@@ -85,3 +88,16 @@ if st.button("Ingest Job Post", key="btn_job_ingest"):
         st.json(r.json())
     except Exception as e:
         st.error(f"Failed to ingest job: {e}")
+
+
+
+
+#Add Streamlit section L4
+st.subheader("L4 Matching (EvidenceProfile + JobPost → MatchResult)")
+
+if st.button("Run Matching (latest profile + latest job)", key="btn_match"):
+    try:
+        r = httpx.post(f"{api_url}/match/run", timeout=30)
+        st.json(r.json())
+    except Exception as e:
+        st.error(f"Failed to run matching: {e}")
