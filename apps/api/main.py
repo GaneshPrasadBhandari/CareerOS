@@ -9,12 +9,32 @@ from careeros.intake.service import write_intake_bundle
 from pydantic import BaseModel
 from careeros.parsing.service import build_profile_from_text, write_profile
 
+from careeros.core.logging import get_logger, new_run_id, log_event, log_exception
+
+
 
 
 settings = load_settings()
 logger = get_logger()
 
 app = FastAPI(title="CareerOS API", version="0.1.0")
+
+
+from fastapi import Request
+from fastapi.responses import JSONResponse
+
+logger = get_logger()
+
+
+@app.exception_handler(Exception)
+async def handle_unexpected_error(request: Request, exc: Exception):
+    run_id = new_run_id()
+    log_exception(logger, "unhandled_exception", run_id, exc, path=str(request.url.path))
+    return JSONResponse(
+        status_code=500,
+        content={"status": "error", "code": "internal_error", "message": "Unexpected error", "run_id": run_id},
+    )
+
 
 
 @app.get("/")
@@ -64,3 +84,8 @@ def create_profile(req: ProfileRequest):
     out_path = write_profile(profile)
     log_event(logger, "profile_created", run_id, path=str(out_path), skills=len(profile.skills))
     return {"status": "ok", "path": str(out_path), "skills": profile.skills, "run_id": run_id}
+
+
+@app.get("/debug/error")
+def debug_error():
+    raise RuntimeError("Forced error to verify logging + exception handling")
