@@ -58,6 +58,7 @@ if st.button("Create Intake Bundle", key="btn_intake"):
         st.error(f"Failed to create intake bundle: {e}")
 
 
+
 st.subheader("L2 Parsing (Resume Text → Evidence Profile)")
 
 candidate = st.text_input("Candidate name", value="")
@@ -70,3 +71,17 @@ if st.button("Build Profile", key="btn_profile"):
         st.json(r.json())
     except Exception as e:
         st.error(f"Failed to build profile: {e}")
+
+
+st.subheader("L3 Jobs (Paste Job Description → JobPost Artifact)")
+
+job_url = st.text_input("Job URL (optional)", value="", key="job_url")
+job_text = st.text_area("Paste job description here", height=200, key="job_text")
+
+if st.button("Ingest Job Post", key="btn_job_ingest"):
+    payload = {"url": job_url or None, "job_text": job_text}
+    try:
+        r = httpx.post(f"{api_url}/jobs/ingest", json=payload, timeout=20)
+        st.json(r.json())
+    except Exception as e:
+        st.error(f"Failed to ingest job: {e}")
