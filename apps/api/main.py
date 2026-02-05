@@ -1,3 +1,4 @@
+from __future__ import annotations
 from fastapi import FastAPI
 
 from careeros.core.settings import load_settings
@@ -32,6 +33,18 @@ from careeros.generation.service import build_package, write_application_package
 from careeros.guardrails.service import validate_package_against_evidence, write_validation_report, latest
 from careeros.guardrails.schema import ValidationReport
 from careeros.generation.schema import ApplicationPackage
+
+from fastapi import FastAPI, HTTPException
+
+# NEW imports for P8
+from careeros.export.schema import ExportRequest, ExportResult
+from careeros.export.service import export_latest_validated_package
+from careeros.tracking.schema import ApplicationRecord, ApplicationStatus
+from careeros.tracking.service import append_jsonl, update_status_jsonl, _utc_now
+
+from careeros.analytics.schema import FunnelMetrics, ListApplicationsResponse
+from careeros.analytics.service import list_applications, compute_metrics, get_application
+from fastapi import Query
 
 
 
@@ -242,3 +255,88 @@ def validate_latest_package():
 
     log_event(logger, "guardrails_passed", run_id, path=str(out_path))
     return {"status": "pass", "path": str(out_path), "run_id": run_id}
+
+
+
+#add P8 routes
+# ---- P8: Export + Apply Tracking ----
+
+TRACKING_PATH = "outputs/apply_tracking/applications_v1.jsonl"
+
+@app.post("/export/package", response_model=ExportResult)
+def export_package(req: ExportRequest):
+    try:
+        meta = export_latest_validated_package(
+            package_path=req.package_path,
+            validation_report_path=req.validation_report_path,
+            out_dir=req.out_dir,
+            export_docx=req.export_docx,
+            export_pdf=req.export_pdf,
+        )
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except ValueError as e:
+        # blocked by guardrails
+        raise HTTPException(status_code=409, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Export failed: {e}")
+
+    record = ApplicationRecord(
+        application_id=meta["application_id"],
+        run_id=meta["run_id"],
+        job_path=None,  # optional; can be derived later from meta["package_path"] content
+        package_path=meta["package_path"],
+        validation_report_path=meta["validation_report_path"],
+        export_docx_path=meta["docx_path"],
+        export_pdf_path=meta["pdf_path"],
+        status="exported",
+        created_at_utc=_utc_now(),
+        updated_at_utc=_utc_now(),
+    )
+    append_jsonl(TRACKING_PATH, record)
+
+    return ExportResult(
+        application_id=record.application_id,
+        run_id=record.run_id,
+        package_path=record.package_path,
+        validation_report_path=record.validation_report_path,
+        docx_path=record.export_docx_path,
+        pdf_path=record.export_pdf_path,
+        status=record.status,
+    )
+
+
+class UpdateStatusRequest(BaseModel):
+    application_id: str
+    new_status: ApplicationStatus
+
+
+@app.post("/apply/update_status", response_model=ApplicationRecord)
+def apply_update_status(req: UpdateStatusRequest):
+    rec = update_status_jsonl(TRACKING_PATH, req.application_id, req.new_status)
+    if rec is None:
+        raise HTTPException(status_code=404, detail="application_id not found in tracking file")
+    return 
+
+
+
+#add route for P9
+@app.get("/applications/list", response_model=ListApplicationsResponse)
+def applications_list(
+    status: str | None = Query(default=None),
+    limit: int = Query(default=50, ge=1, le=500),
+):
+    return list_applications(TRACKING_PATH, status=status, limit=limit, newest_first=True)
+
+
+@app.get("/applications/metrics", response_model=FunnelMetrics)
+def applications_metrics():
+    return compute_metrics(TRACKING_PATH)
+
+
+@app.get("/applications/{application_id}")
+def applications_get(application_id: str):
+    rec = get_application(TRACKING_PATH, application_id)
+    if rec is None:
+        raise HTTPException(status_code=404, detail="application_id not found")
+    return rec
