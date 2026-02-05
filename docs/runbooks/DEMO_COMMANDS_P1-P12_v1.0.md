@@ -18,6 +18,7 @@ It includes:
 cd /Users/ganeshprasadbhandari/Documents/D_drive/clark/spring_2026/capstone/CareerOS
 source .venv/bin/activate
 
+---
 
 ## 1) Install dependencies (only if missing)
 ```bash
@@ -31,7 +32,7 @@ PYTHONPATH=src pytest -q
 ## 3) Start API (Terminal 1)
 ```bash
 PYTHONPATH=src uvicorn apps.api.main:app --reload --port 8000
-
+---
 Keep this running.
 
 
@@ -39,6 +40,7 @@ Keep this running.
 ```bash
 CAREEROS_API_URL=http://127.0.0.1:8000 streamlit run apps/ui/Home.py
 
+---
 
 Use Streamlit to paste resume/job and click buttons for P1–P12.
 
@@ -85,6 +87,7 @@ After clicking P7 validate:
 ```bash
 ls -lt outputs/guardrails | head
 
+---
 
 ###Print latest report status quickly:
 ```bash
@@ -98,6 +101,7 @@ print("unsupported_terms:", d["findings"][0].get("unsupported_terms") if d.get("
 PY
 
 Expected: status: pass
+---
 
 ### P8 — Verify exports + tracking ledger
 
@@ -136,6 +140,7 @@ ls -lt outputs/guardrails | head
 ls -lt exports/submissions | head
 ls -lt outputs/followups | head
 ls -lt outputs/notifications | head
+---
 
 ## BLOCK Demo (Governance proof)
 
@@ -163,7 +168,7 @@ print("status:", rep.status)
 print("unsupported_terms:", rep.findings[0].unsupported_terms if rep.findings else [])
 PY
 
-
+---
 Expected:
 
 status: blocked
@@ -177,7 +182,7 @@ ls -lt exports/submissions | head
 ## Logs (show auditability)
 ```bash
 tail -n 50 logs/careeros.jsonl
-
+---
 
 Also show API terminal logs (uvicorn requests) during the demo.
 
@@ -189,6 +194,6 @@ rm -rf outputs/intake outputs/profile outputs/jobs outputs/matching outputs/rank
 rm -rf exports/submissions exports/packages
 mkdir -p outputs/intake outputs/profile outputs/jobs outputs/matching outputs/ranking outputs/guardrails outputs/followups outputs/notifications outputs/apply_tracking
 mkdir -p exports/packages exports/submissions
-
+---
 
 Then rerun the PASS demo.
