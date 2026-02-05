@@ -301,6 +301,7 @@ with col_b:
 
 
 #add section for p10
+# add section for p10
 st.header("P10 — Next Actions (Follow-up Scheduler)")
 
 col1, col2 = st.columns(2)
@@ -308,6 +309,16 @@ with col1:
     followup_days = st.number_input("Follow-up after idle days", min_value=1, max_value=14, value=3)
 with col2:
     stale_days = st.number_input("Stale application days", min_value=7, max_value=60, value=14)
+
+def _render_queue(q: dict):
+    st.subheader("Action Queue")
+    st.write(f"Generated at: {q.get('created_at_utc')} | Total: {q.get('total')}")
+    actions = q.get("actions", [])
+    if actions:
+        import pandas as pd
+        st.dataframe(pd.DataFrame(actions), use_container_width=True)
+    else:
+        st.info("No actions generated.")
 
 if st.button("Generate Next Actions"):
     resp = requests.post(
@@ -317,7 +328,16 @@ if st.button("Generate Next Actions"):
     )
     if resp.status_code == 200:
         st.success("Generated follow-up actions")
-        st.json(resp.json())
+        data = resp.json()
+        st.json(data)
+
+        # Prefer queue if present, otherwise fall back to latest
+        q = data.get("queue")
+        if not q:
+            latest = requests.get(f"{api_url}/followups/latest", timeout=30).json()
+            q = (latest or {}).get("queue")
+        if q:
+            _render_queue(q)
     else:
         st.error(resp.text)
 
@@ -325,13 +345,11 @@ if st.button("Load Latest Actions"):
     resp = requests.get(f"{api_url}/followups/latest", timeout=30)
     if resp.status_code == 200:
         data = resp.json()
-        st.subheader("Action Queue")
-        st.write(f"Generated at: {data.get('generated_at_utc')} | Total: {data.get('total')}")
-        items = data.get("items", [])
-        if items:
-            import pandas as pd
-            st.dataframe(pd.DataFrame(items), use_container_width=True)
+        q = data.get("queue", {})
+        if q:
+            _render_queue(q)
         else:
-            st.info("No actions generated.")
+            st.info("No latest actions found. Generate actions first.")
+            st.json(data)
     else:
         st.error(resp.text)

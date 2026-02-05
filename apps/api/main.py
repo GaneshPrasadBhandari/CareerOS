@@ -46,7 +46,13 @@ from careeros.analytics.schema import FunnelMetrics, ListApplicationsResponse
 from careeros.analytics.service import list_applications, compute_metrics, get_application
 from fastapi import Query
 
-from careeros.followups.service import generate_next_actions, write_action_queue, load_action_queue
+from careeros.followups.service import (
+    generate_next_actions,
+    write_action_queue,
+    load_action_queue,
+    latest_action_queue_path,
+    action_queue_to_dict,
+)
 
 
 
@@ -354,7 +360,26 @@ def followups_generate(followup_days: int = 3, stale_days: int = 14):
 
 @app.get("/followups/latest")
 def followups_latest():
-    data = load_action_queue()
-    if data is None:
-        raise HTTPException(status_code=404, detail="no followups generated yet")
-    return data
+    try:
+        path = latest_action_queue_path()
+        if not path:
+            return {
+                "status": "error",
+                "code": "not_found",
+                "message": "No followups queue found yet. Run /followups/generate first.",
+            }
+
+        q = load_action_queue(path)
+        return {
+            "status": "ok",
+            "path": path,
+            "queue": action_queue_to_dict(q),
+        }
+
+    except Exception as e:
+        return {
+            "status": "error",
+            "code": "internal_error",
+            "message": f"Unexpected error: {e}",
+        }
+
