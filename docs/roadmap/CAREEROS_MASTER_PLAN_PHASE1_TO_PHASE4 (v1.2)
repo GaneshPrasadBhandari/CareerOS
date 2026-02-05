@@ -1,0 +1,581 @@
+# CareerOS — Master Plan (Phase 1 → Phase 4)  
+**Author:** Ganesh Prasad Bhandari  
+**Project:** CareerOS (Capstone → Portfolio → Startup Product)
+
+---
+
+## 0) How to read this document (fast)
+This master plan explains CareerOS in two parallel views:
+
+1) **Architecture Layers (L1–L9)** = what the product is (UI → Orchestrator → Managers/Agents → Approvals → Execution → Analytics → Memory/Models → Governance/Ops)
+
+2) **Build Pipeline Steps (P1–P18+...)** = how I’m building it incrementally in code using artifacts
+
+✅ Every pipeline step includes:
+- **Inputs** (what it consumes)
+- **Processing** (what it does)
+- **Outputs** (artifact files it produces)
+- **Architecture mapping** (which L-layers it belongs to)
+- **Example** using one sample student/candidate end-to-end
+
+---
+
+## 1) The running example (used across every step)
+I use one consistent example so the whole workflow is easy to understand:
+
+### Candidate (Student)
+**Name:** Tanish (MS student)  
+**Goal roles:** ML Engineer, GenAI Engineer  
+**Constraints:** Remote-only, USA, salary 120k–180k, CPT Jan–May 2026 then OPT  
+**Resume evidence (truth source):**
+- Python, FastAPI, Docker, Kubernetes
+- AWS, MLflow, DVC
+- RAG, LLM apps, vector DB basics
+- Projects: “CareerOS” capstone, healthcare AI research
+
+### Job inputs (3 job posts)
+Tanish pastes 3 job descriptions in the UI (paste-first is deliberate in Phase 1).
+
+---
+
+## 2) Two numbering systems (this prevents confusion)
+### A) Architecture Layers (L1–L9) — what CareerOS is
+- **L1:** Entry / UX (Streamlit UI, forms, dashboards)
+- **L2:** Backend API (FastAPI endpoints + validation)
+- **L3:** Orchestration Core (Planner/Director behavior; pipeline now, LangGraph later)
+- **L4:** Agent Layer (job understand/match/tailor behaviors; deterministic now, agents later)
+- **L5:** Human Approval Gates (approve shortlist/package/sensitive actions)
+- **L6:** Execution & Tracking (export + lifecycle ledger + followups)
+- **L7:** Analytics & Learning (funnel + metrics + A/B later)
+- **L8:** Memory & Models (DB + vector DB + embeddings + LLMs later)
+- **L9:** Governance / Explainability / Ops (audit logs, guardrails, CI/CD hooks)
+
+### B) Build Pipeline Steps (P1–P18+...) — how I’m building it
+- **Phase 1:** P1–P12 (deterministic spine)
+- **Phase 2:** P13–P18 (RAG + LLM grounding + hybrid reasoning)
+- **Phase 3:** P19–P24 (real agent orchestration)
+- **Phase 4:** P25–P32 (CI/CD, Docker/K8s, monitoring, drift, MLOps)
+
+✅ **Rule:** One P-step can touch multiple L-layers.
+
+---
+
+## 3) Phase 1 (Completed): Deterministic “Spine” — P1 to P12  
+**Goal:** Ship a reliable product loop **without agents/LLMs/ML** first, so everything is testable and demo-safe.
+
+### Phase 1 MVP demo proof (must work in one run)
+CareerOS produces:
+- a ranked shortlist for ≥3 job posts
+- ≥1 job-specific application package export
+- ≥1 blocked unsupported claim (guardrail proof)
+- an audit trail explaining ranking + validation
+
+---
+
+# PHASE 1 — PIPELINE DETAILS (P1 → P12)
+
+## P1 — Repo + environment + skeleton + standards
+**Architecture mapping:** L9 (Ops foundation)  
+**Purpose:** Create a professional product foundation so every later step fits cleanly.
+
+### Inputs
+- Developer machine (VS Code)
+- GitHub repo
+- Python environment (3.11 recommended)
+- Baseline standards: `.env`, `.env.example`, `.gitignore`, `pyproject.toml`, tests folders
+
+### Processing (what happens)
+- Create canonical folders: `src/`, `apps/`, `tests/`, `outputs/`, `exports/`, `logs/`
+- Configure packaging so `careeros` imports work
+- Ensure secrets never commit
+- Establish “artifact-first” storage discipline
+
+### Outputs
+- `src/careeros/...` modules
+- `.env` (local only)
+- `.env.example` (safe template)
+- `.gitignore` hardened
+- `pyproject.toml`
+- test harness scaffolding
+
+### Example (Tanish)
+Before any AI logic exists, I can run:
+- API server
+- UI
+- tests
+and prove the system is runnable and stable.
+
+---
+
+## P2 — Intake Bundle (candidate constraints + targets)
+**Architecture mapping:** L1 (UI) + L2 (API) + L9 (artifact contract)  
+**Purpose:** Convert “what the user wants” into a structured artifact every downstream step can trust.
+
+### Inputs (from UI / user)
+- Candidate name (optional)
+- Target roles (comma-separated)
+- Location, remote-only flag
+- Salary min/max
+- Work authorization
+- Links (optional)
+
+### Processing
+- Validate required fields and types
+- Normalize into a consistent schema
+
+### Outputs (artifact)
+- `outputs/intake/intake_bundle_v1_<timestamp>.json`
+
+### Example (Tanish)
+Tanish enters:
+- target_roles: “GenAI Engineer, ML Engineer”
+- location: “USA”, remote_only: true
+- salary: 120k–180k
+- work_auth: “CPT Jan–May 2026, OPT after May 2026”
+
+That becomes the IntakeBundle artifact that later ranking MUST respect.
+
+---
+
+## P3 — Resume Parsing → EvidenceProfile (structured truth)
+**Architecture mapping:** L2 (API) + L4 (simulated Resume Understanding agent) + L9  
+**Purpose:** Extract “what Tanish can prove” from resume text, as structured evidence.
+
+### Inputs
+- `outputs/intake/...json` (context, optional)
+- Resume text pasted in UI (Phase 1)
+  - (Later Phase 2: PDF parsing + chunking + vector storage)
+
+### Processing
+- Deterministic extraction (regex/heuristics): skills, titles, domains, projects
+- Normalize into EvidenceProfile schema
+
+### Outputs
+- `outputs/profile/profile_v1_<timestamp>.json`
+
+### Example (Tanish)
+From the pasted resume:
+- skills: python, docker, kubernetes, aws, mlflow, dvc, rag, fastapi
+- domains: healthcare
+This becomes the “source of truth” used later for guardrails.
+
+---
+
+## P4 — Job ingestion → JobPost artifacts (paste-first)
+**Architecture mapping:** L1 + L2 + L4 (simulated Job Understanding)  
+**Purpose:** Turn raw job descriptions into structured JobPost artifacts.
+
+### Inputs
+- Job description text pasted in UI (3 job posts recommended)
+
+### Processing
+- Deterministic extraction: title, required skills list (keyword list), location, constraints
+
+### Outputs
+- `outputs/jobs/job_post_v1_<timestamp>.json` (one per job)
+
+### Example (Tanish)
+He pastes 3 jobs:
+1) GenAI Engineer (Python + RAG + vector DB)
+2) ML Engineer (Kubernetes + MLflow + CI/CD)
+3) Solution Architect (AWS + Docker + governance)
+
+Each becomes a JobPost artifact.
+
+---
+
+## P5 — Matching + Ranking (deterministic, explainable)
+**Architecture mapping:** L4 (matching behavior) + L7 (ranking results) + L9 (explainability)  
+**Purpose:** Produce a ranked shortlist and explain why.
+
+### Inputs
+- EvidenceProfile (P3)
+- JobPost artifacts (P4)
+- IntakeBundle constraints (P2)
+
+### Processing
+- Constraint gate (Phase 1: basic checks)
+- Keyword overlap score
+- Generate explainable “reasons” per job:
+  - overlap_skills
+  - missing_skills
+  - score rationale
+
+### Outputs
+- `outputs/matching/shortlist_v1_<timestamp>.json`
+
+### Example (Tanish)
+Job #2 ranks highest because overlap includes:
+python + docker + kubernetes + mlflow + dvc  
+Shortlist artifact stores top_n=3 with reasons.
+
+---
+
+## P6 — Application Package generation (deterministic template)
+**Architecture mapping:** L4 (tailoring behaviors) + L6 (package readiness) + L9  
+**Purpose:** Create job-specific application artifacts (resume bullets + cover letter + QA stubs) without hallucinating.
+
+### Inputs
+- EvidenceProfile (P3)
+- Selected JobPost (from P4)
+- Shortlist job context (from P5)
+
+### Processing
+- Deterministic templates:
+  - bullets written from skills overlap
+  - cover letter skeleton filled with role context
+  - QA stubs (Tell me about yourself / Why this role)
+
+### Outputs
+- `exports/packages/application_package_v1_<timestamp>.json`
+
+### Example (Tanish)
+For GenAI Engineer job:
+- bullets mention python + rag + mlflow only if present in EvidenceProfile
+- cover letter references healthcare AI experience
+
+---
+
+## P7 — Guardrails validation (block unsupported claims)
+**Architecture mapping:** L9 (policy enforcement) + L5 (approval escalation) + touches L4  
+**Purpose:** Prove CareerOS blocks unsupported claims (anti-hallucination behavior).
+
+### Inputs
+- EvidenceProfile (P3) = truth
+- ApplicationPackage (P6) = candidate output
+
+### Processing
+- Extract “tech terms” from generated package
+- If any tech term not found in EvidenceProfile.skills → BLOCK
+- Otherwise PASS
+
+### Outputs
+- `outputs/guardrails/validation_report_v1_<timestamp>.json`
+- Status: `pass` or `blocked`
+- Findings: unsupported_terms + where they appeared
+
+### Example (Tanish)
+If someone edits the JSON and adds “Snowflake” in a bullet but Snowflake is not in EvidenceProfile.skills:
+- status becomes **blocked**
+- report lists “Snowflake” as unsupported
+
+---
+
+## P8 — Export + Apply Tracking (DOCX/PDF + ledger)
+**Architecture mapping:** L6 (execution/tracking) + L9 (audit trail) + touches L5  
+**Purpose:** Convert validated package into real submission-ready files and record the lifecycle.
+
+### Inputs
+- ApplicationPackage (P6)
+- ValidationReport (P7) must be `pass`
+
+### Processing
+- Gate: if blocked → export refused
+- Export DOCX and PDF
+- Append tracking record to JSONL ledger:
+  - application_id
+  - job_id
+  - timestamps
+  - status
+
+### Outputs
+- `exports/submissions/<application_id>_<job_hint>/application_package.docx`
+- `exports/submissions/<application_id>_<job_hint>/application_package.pdf`
+- `outputs/apply_tracking/applications_v1.jsonl`
+
+### Example (Tanish)
+He gets a real DOCX/PDF he can submit, and CareerOS records:
+- exported_at
+- status = exported (then later submitted)
+
+---
+
+## P9 — Analytics dashboard (funnel + drilldown)
+**Architecture mapping:** L7 (analytics) + L6 (ops) + L9 (audit-friendly reporting)  
+**Purpose:** Turn “activity” into a dashboard view.
+
+### Inputs
+- Tracking ledger: `outputs/apply_tracking/applications_v1.jsonl`
+
+### Processing
+- Compute funnel counts: exported → submitted → interview → offer
+- Compute conversion rates
+- Support drilldown by application_id
+
+### Outputs
+- API endpoints:
+  - `/applications/list`
+  - `/applications/metrics`
+  - `/applications/{application_id}`
+- Streamlit section showing:
+  - table
+  - metrics
+  - drilldown
+
+### Example (Tanish)
+He sees:
+- 3 exported
+- 1 submitted
+- follow-ups needed for 2 stale submissions
+
+---
+
+## P10 — Next actions queue (follow-ups generator)
+**Architecture mapping:** L6 + L7 + L9  
+**Purpose:** Create an actionable “what should I do next?” queue from real lifecycle state.
+
+### Inputs
+- Tracking ledger JSONL
+
+### Processing (Phase 1 deterministic rules)
+- If submitted and idle ≥ N days → follow_up action
+- If interview upcoming → prepare_interview action
+- If exported but not submitted → reminder action
+
+### Outputs
+- `outputs/followups/followups_v1.json`
+
+### Example (Tanish)
+If Job #1 is submitted 7 days ago with no response:
+- action created: “Follow up with recruiter”
+- due date set
+
+---
+
+## P11 — Notification drafts (email + LinkedIn templates; no sending)
+**Architecture mapping:** L6 + L7 + L9 (+ touches L5 approvals later)  
+**Purpose:** Convert action queue into ready-to-copy messages (safe automation).
+
+### Inputs
+- Followups queue (P10)
+- Tracking ledger (P8) for context
+
+### Processing
+- Template drafting:
+  - follow_up → email + LinkedIn message
+  - interview prep → checklist email
+- No sending; only drafts
+
+### Outputs
+- `outputs/notifications/drafts_v1.json`
+
+### Example (Tanish)
+CareerOS generates:
+- Email follow-up subject + body
+- LinkedIn message draft to recruiter
+He copies/pastes after review.
+
+---
+
+## P12 — Orchestrator runner (one-click deterministic workflow)
+**Architecture mapping:** L3 (orchestration core) + L6 + L9  
+**Purpose:** Tie the pipeline into one “run” so it behaves like a product workflow.
+
+### Inputs
+- profile_path (P3)
+- job_path (P4)
+- optional shortlist context (P5)
+- tracking ledger path
+
+### Processing
+Executes:
+P6 → P7 (stop if blocked) → P8 → P10 → P11
+
+### Outputs
+- Single run object containing:
+  - run_id
+  - status: ok | blocked | error
+  - artifact paths for every step
+
+### Example (Tanish)
+One click:
+- generates package
+- validates it
+- exports docx/pdf
+- updates tracking
+- creates follow-ups
+- drafts messages
+
+---
+
+# PHASE 2 — PIPELINE DETAILS (P13 → P18)
+**Phase 2 goal:** upgrade to grounded LLM + RAG while keeping the pipeline stable and safe.
+
+## P13 — Evidence chunking + embeddings + vector store (local-first)
+**Architecture mapping:** L8 (memory/models) + L9 (ops) + supports L4  
+**Purpose:** Make every claim groundable via retrieved evidence.
+
+### Inputs
+- Resume text (Phase 2: parse PDF → text)
+- Optional: project docs / links
+
+### Processing
+- Chunk resume into evidence blocks
+- Create embeddings (local sentence-transformers first)
+- Store in vector DB (Chroma or FAISS)
+
+### Outputs
+- `artifacts/vector/` (persisted index)
+- `outputs/rag/index_manifest_v1.json` (what’s indexed, chunk ids)
+
+### Example (Tanish)
+A bullet that mentions “MLflow” must link to:
+- chunk_id: “resume_chunk_12” that actually contains MLflow evidence
+
+---
+
+## P14 — LLM adapter + prompt registry (versioned prompts)
+**Architecture mapping:** L8 + L9  
+**Purpose:** Support multiple LLM providers safely with deterministic fallback.
+
+### Inputs
+- `.env` keys (feature-flagged)
+- prompt templates + versions
+
+### Processing
+- Implement provider interface:
+  - OpenAI / Azure OpenAI / HF / local LLM
+- Store prompt pack with versions
+
+### Outputs
+- `outputs/prompts/prompt_pack_v1.json`
+- logs capturing prompt version + model used
+
+### Example (Tanish)
+If LLM provider is disabled:
+- CareerOS uses deterministic fallback and still works.
+
+---
+
+## P15 — LLM job requirements extractor (structured JSON)
+**Architecture mapping:** L4 (job understanding agent) + L8 + L9  
+**Purpose:** Convert job text into structured requirements reliably.
+
+### Inputs
+- JobPost text (P4 artifacts)
+
+### Processing
+- LLM produces JSON schema:
+  - must_have
+  - nice_to_have
+  - responsibilities
+  - role_level
+  - location constraints
+- Add confidence + rationale
+
+### Outputs
+- `outputs/jobs/job_requirements_v2_<timestamp>.json`
+
+### Example (Tanish)
+Job says “LangGraph preferred”; extractor captures it as nice_to_have with confidence.
+
+---
+
+## P16 — Hybrid matching v2 (constraints + semantic + evidence)
+**Architecture mapping:** L4 + L7 + L8 + L9  
+**Purpose:** Ranking becomes stronger than keyword overlap.
+
+### Inputs
+- IntakeBundle (P2)
+- EvidenceProfile (P3)
+- Job requirements (P15)
+- Vector store retrieval (P13)
+
+### Processing
+Score = weighted sum:
+- constraint satisfaction
+- semantic similarity (embedding similarity)
+- evidence coverage (how many must-haves can be proven)
+
+### Outputs
+- `outputs/matching/shortlist_v2_<timestamp>.json`
+
+### Example (Tanish)
+Even if job uses slightly different wording (“LLM orchestration” vs “LangGraph”),
+semantic similarity catches relevance.
+
+---
+
+## P17 — Grounded generation v2 (citations required)
+**Architecture mapping:** L4 + L8 + L9  
+**Purpose:** Generated bullets/letters must cite evidence chunks.
+
+### Inputs
+- Evidence retrieval results (chunk ids)
+- Job requirements JSON
+- Intake constraints
+
+### Processing
+- LLM generates content using retrieved chunks only
+- Every bullet stores:
+  - text
+  - supporting evidence chunk ids
+
+### Outputs
+- `exports/packages/application_package_v2_<timestamp>.json` (with evidence pointers)
+
+### Example (Tanish)
+Bullet:
+“Built MLflow-based experiment tracking…”  
+Must include chunk id where MLflow is mentioned.
+
+---
+
+## P18 — Guardrails v2 + approval routing
+**Architecture mapping:** L9 + L5 + touches L4  
+**Purpose:** Stronger governance with confidence thresholds.
+
+### Inputs
+- ApplicationPackage v2 (P17)
+- EvidenceProfile (P3)
+- Evidence chunks (P13)
+
+### Processing
+- Block unsupported tech terms
+- Warn on weak evidence (low confidence)
+- Route to human approval if:
+  - confidence below threshold
+  - sensitive claim detected
+
+### Outputs
+- `outputs/guardrails/validation_report_v2_<timestamp>.json`
+- `outputs/approvals/pending_approvals_v1.json` (if needed)
+
+### Example (Tanish)
+If bullet claims “built production-scale Kafka streaming” but evidence is weak:
+- CareerOS flags for approval instead of silently passing.
+
+---
+
+# PHASE 3 — REAL AGENTIC ORCHESTRATION (P19 → P24)
+**Goal:** Replace deterministic orchestration with real agent routing while preserving artifact contracts.
+
+(Details will be expanded once Phase 2 grounding is stable. The core rule stays: agents must write artifacts and pass guardrails.)
+
+---
+
+# PHASE 4 — PRODUCT-GRADE ENGINEERING (P25 → P32)
+**Goal:** Deployable + observable + portfolio-grade system:
+- CI/CD gates
+- Docker/K8s
+- monitoring + drift
+- MLflow + DVC tracking
+- runbooks for demos
+
+(Expanded once Phase 3 orchestration is stable.)
+
+---
+
+## 10) The invariant that makes CareerOS “enterprise-grade”
+1) Every step consumes artifacts, not raw UI values (once artifacts exist)  
+2) Every step writes timestamped artifacts  
+3) Guardrails + approvals gate exports and sensitive actions  
+4) Logs explain every ranking and validation decision  
+5) Deterministic fallback exists for demo reliability
+
+---
+
+## 11) Current checkpoint and next action
+✅ Phase 1 is complete (P1–P12 deterministic spine).  
+➡️ Next build milestone is Phase 2 starting with **P13 vector store + evidence chunks**, because that enables grounded LLM behavior without rewriting the pipeline.
+
