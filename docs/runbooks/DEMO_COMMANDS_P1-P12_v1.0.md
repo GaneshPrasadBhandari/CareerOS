@@ -17,26 +17,26 @@ It includes:
 ```bash
 cd /Users/ganeshprasadbhandari/Documents/D_drive/clark/spring_2026/capstone/CareerOS
 source .venv/bin/activate
-
+```
 ---
 
 ## 1) Install dependencies (only if missing)
 ```bash
 python -m pip install -U pip
 python -m pip install pytest pandas python-docx reportlab
-
+```
 ---
 
 ## 2) Run tests (demo proof: engineering quality)
 ```bash
 PYTHONPATH=src pytest -q
-
+```
 ---
 
 ## 3) Start API (Terminal 1)
 ```bash
 PYTHONPATH=src uvicorn apps.api.main:app --reload --port 8000
-
+```
 ---
 Keep this running.
 
@@ -44,7 +44,7 @@ Keep this running.
 ##4) Start UI (Terminal 2)
 ```bash
 CAREEROS_API_URL=http://127.0.0.1:8000 streamlit run apps/ui/Home.py
-
+```
 ---
 
 Use Streamlit to paste resume/job and click buttons for P1–P12.
@@ -55,7 +55,7 @@ Use Streamlit to paste resume/job and click buttons for P1–P12.
 ### After clicking P1 in Streamlit:
 ```bash
 ls -lt outputs/intake | head
-
+```
 ---
 
 ### P2 — Verify EvidenceProfile artifacts
@@ -63,7 +63,7 @@ ls -lt outputs/intake | head
 After clicking P2 (parse resume):
 ```bash
 ls -lt outputs/profile | head
-
+```
 ---
 
 ### P3 — Verify JobPost artifacts
@@ -71,7 +71,7 @@ ls -lt outputs/profile | head
 After clicking P3 (ingest jobs):
 ```bash
 ls -lt outputs/jobs | head
-
+```
 ---
 
 ### P4 — Verify MatchResult artifacts
@@ -79,7 +79,7 @@ ls -lt outputs/jobs | head
 After clicking P4 (matching):
 ```bash
 ls -lt outputs/matching | head
-
+```
 ---
 
 ### P5 — Verify RankedShortlist artifacts
@@ -87,7 +87,7 @@ ls -lt outputs/matching | head
 After clicking P5 (ranking):
 ```bash
 ls -lt outputs/ranking | head
-
+```
 ---
 
 ### P6 — Verify ApplicationPackage artifacts
@@ -95,7 +95,7 @@ ls -lt outputs/ranking | head
 After clicking P6 (generation):
 ```bash
 ls -lt exports/packages | head
-
+```
 ---
 
 ### P7 — Verify Guardrails report (PASS)
@@ -103,7 +103,7 @@ ls -lt exports/packages | head
 After clicking P7 validate:
 ```bash
 ls -lt outputs/guardrails | head
-
+```
 ---
 
 ###Print latest report status quickly:
@@ -116,7 +116,7 @@ print("LATEST:", p)
 print("status:", d.get("status"))
 print("unsupported_terms:", d["findings"][0].get("unsupported_terms") if d.get("findings") else [])
 PY
-
+```
 ---
 Expected: status: pass
 
@@ -128,7 +128,7 @@ After clicking P8 export:
 ls -lt exports/submissions | head
 find exports/submissions -maxdepth 3 -type f | tail -n 20
 tail -n 3 outputs/apply_tracking/applications_v1.jsonl
-
+```
 ---
 
 ### P9 — Verify analytics source (ledger exists)
@@ -136,7 +136,7 @@ tail -n 3 outputs/apply_tracking/applications_v1.jsonl
 P9 is UI/API derived, but the ledger is the source of truth:
 ```bash
 tail -n 5 outputs/apply_tracking/applications_v1.jsonl
-
+```
 ---
 
 ### P10 — Verify followups queue
@@ -145,7 +145,7 @@ After clicking P10 generate actions:
 ```bash
 ls -lt outputs/followups | head
 cat outputs/followups/followups_v1.json | head -n 120
-
+```
 ---
 
 ### P11 — Verify drafts bundle
@@ -154,7 +154,7 @@ After clicking P11 build drafts:
 ```bash
 ls -lt outputs/notifications | head
 cat outputs/notifications/drafts_v1.json | head -n 120
-
+```
 ---
 
 ### P12 — Orchestrator run (optional PASS)
@@ -167,7 +167,7 @@ ls -lt exports/submissions | head
 ls -lt outputs/followups | head
 ls -lt outputs/notifications | head
 ---
-
+```
 ## BLOCK Demo (Governance proof)
 
 Goal: show that an unsupported claim is blocked, and export stops.
@@ -193,7 +193,7 @@ rep = validate_package_against_evidence(profile, pkg, run_id="demo_block", packa
 print("status:", rep.status)
 print("unsupported_terms:", rep.findings[0].unsupported_terms if rep.findings else [])
 PY
-
+```
 ---
 Expected:
 
@@ -204,13 +204,13 @@ unsupported_terms: ['snowflake']
 ## Optional: confirm export folder does NOT grow after a blocked attempt:
 ```bash
 ls -lt exports/submissions | head
-
+```
 ---
 
 ## Logs (show auditability)
 ```bash
 tail -n 50 logs/careeros.jsonl
-
+```
 ---
 
 Also show API terminal logs (uvicorn requests) during the demo.
@@ -223,7 +223,7 @@ rm -rf outputs/intake outputs/profile outputs/jobs outputs/matching outputs/rank
 rm -rf exports/submissions exports/packages
 mkdir -p outputs/intake outputs/profile outputs/jobs outputs/matching outputs/ranking outputs/guardrails outputs/followups outputs/notifications outputs/apply_tracking
 mkdir -p exports/packages exports/submissions
-
+```
 ---
 
 Then rerun the PASS demo.
