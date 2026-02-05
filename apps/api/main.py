@@ -55,6 +55,16 @@ from careeros.followups.service import (
 )
 
 
+from careeros.followups.service import latest_action_queue_path
+from careeros.notifications.service import (
+    generate_drafts_from_followups,
+    write_drafts_bundle,
+    load_drafts_bundle,
+    latest_drafts_path,
+    draft_bundle_to_dict,
+)
+
+
 
 
 
@@ -383,3 +393,43 @@ def followups_latest():
             "message": f"Unexpected error: {e}",
         }
 
+#add endpints for p11
+@app.post("/notifications/generate")
+def notifications_generate():
+    # use latest followups as source
+    followups_path = latest_action_queue_path()
+    if not followups_path:
+        return {
+            "status": "error",
+            "code": "not_found",
+            "message": "No followups queue found. Run /followups/generate first.",
+        }
+
+    bundle = generate_drafts_from_followups(followups_path)
+    out_path = write_drafts_bundle(bundle)
+
+    return {
+        "status": "ok",
+        "path": out_path,
+        "bundle": draft_bundle_to_dict(bundle),
+        "total": bundle.total,
+    }
+
+
+@app.get("/notifications/latest")
+def notifications_latest():
+    path = latest_drafts_path()
+    if not path:
+        return {
+            "status": "error",
+            "code": "not_found",
+            "message": "No drafts bundle found yet. Run /notifications/generate first.",
+        }
+
+    b = load_drafts_bundle(path)
+    return {
+        "status": "ok",
+        "path": path,
+        "bundle": draft_bundle_to_dict(b),
+        "total": b.total,
+    }

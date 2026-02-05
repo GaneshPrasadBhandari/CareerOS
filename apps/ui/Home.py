@@ -353,3 +353,57 @@ if st.button("Load Latest Actions"):
             st.json(data)
     else:
         st.error(resp.text)
+
+
+#add section for p11
+st.header("P11 — Draft Messages (Notifications)")
+
+def _render_drafts(bundle: dict):
+    st.subheader("Draft Bundle")
+    st.write(f"Generated at: {bundle.get('created_at_utc')} | Total: {bundle.get('total')}")
+    items = bundle.get("items", [])
+    if not items:
+        st.info("No drafts generated.")
+        return
+
+    import pandas as pd
+    # Flatten for table
+    rows = []
+    for it in items:
+        for m in it.get("messages", []):
+            rows.append({
+                "application_id": it.get("application_id"),
+                "action_type": it.get("action_type"),
+                "priority": it.get("priority"),
+                "channel": m.get("channel"),
+                "subject": m.get("subject"),
+                "body": m.get("body"),
+                "due_at_utc": it.get("due_at_utc"),
+            })
+    st.dataframe(pd.DataFrame(rows), use_container_width=True)
+
+if st.button("Generate Drafts"):
+    resp = requests.post(f"{api_url}/notifications/generate", timeout=30)
+    if resp.status_code == 200:
+        data = resp.json()
+        st.success("Generated drafts")
+        b = (data or {}).get("bundle")
+        if b:
+            _render_drafts(b)
+        else:
+            st.json(data)
+    else:
+        st.error(resp.text)
+
+if st.button("Load Latest Drafts"):
+    resp = requests.get(f"{api_url}/notifications/latest", timeout=30)
+    if resp.status_code == 200:
+        data = resp.json()
+        b = (data or {}).get("bundle")
+        if b:
+            st.success("Loaded latest drafts")
+            _render_drafts(b)
+        else:
+            st.json(data)
+    else:
+        st.error(resp.text)
