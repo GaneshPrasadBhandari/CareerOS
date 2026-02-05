@@ -46,6 +46,9 @@ from careeros.analytics.schema import FunnelMetrics, ListApplicationsResponse
 from careeros.analytics.service import list_applications, compute_metrics, get_application
 from fastapi import Query
 
+from careeros.followups.service import generate_next_actions, write_action_queue, load_action_queue
+
+
 
 
 
@@ -340,3 +343,18 @@ def applications_get(application_id: str):
     if rec is None:
         raise HTTPException(status_code=404, detail="application_id not found")
     return rec
+
+
+#add api routes for p10
+@app.post("/followups/generate")
+def followups_generate(followup_days: int = 3, stale_days: int = 14):
+    queue = generate_next_actions(TRACKING_PATH, followup_days=followup_days, stale_days=stale_days)
+    path = write_action_queue(queue)
+    return {"status": "ok", "path": str(path), "total": queue.total}
+
+@app.get("/followups/latest")
+def followups_latest():
+    data = load_action_queue()
+    if data is None:
+        raise HTTPException(status_code=404, detail="no followups generated yet")
+    return data

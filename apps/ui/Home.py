@@ -299,6 +299,39 @@ with col_b:
     if st.button("Quick-fill latest (copy manually from table)"):
         st.info("Tip: copy an application_id from the table above and paste it here.")
 
-# -------------------------------------------------------------------
-# ... keep your existing sections BELOW if you have more ...
-# -------------------------------------------------------------------
+
+#add section for p10
+st.header("P10 — Next Actions (Follow-up Scheduler)")
+
+col1, col2 = st.columns(2)
+with col1:
+    followup_days = st.number_input("Follow-up after idle days", min_value=1, max_value=14, value=3)
+with col2:
+    stale_days = st.number_input("Stale application days", min_value=7, max_value=60, value=14)
+
+if st.button("Generate Next Actions"):
+    resp = requests.post(
+        f"{api_url}/followups/generate",
+        params={"followup_days": int(followup_days), "stale_days": int(stale_days)},
+        timeout=30,
+    )
+    if resp.status_code == 200:
+        st.success("Generated follow-up actions")
+        st.json(resp.json())
+    else:
+        st.error(resp.text)
+
+if st.button("Load Latest Actions"):
+    resp = requests.get(f"{api_url}/followups/latest", timeout=30)
+    if resp.status_code == 200:
+        data = resp.json()
+        st.subheader("Action Queue")
+        st.write(f"Generated at: {data.get('generated_at_utc')} | Total: {data.get('total')}")
+        items = data.get("items", [])
+        if items:
+            import pandas as pd
+            st.dataframe(pd.DataFrame(items), use_container_width=True)
+        else:
+            st.info("No actions generated.")
+    else:
+        st.error(resp.text)
