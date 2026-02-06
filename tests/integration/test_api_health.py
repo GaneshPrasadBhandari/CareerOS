@@ -1,14 +1,5 @@
-# import httpx
-
-# def test_api_health_running():
-#     r = httpx.get("http://127.0.0.1:8000/health", timeout=5)
-#     assert r.status_code == 200
-#     data = r.json()
-#     assert data["status"] == "ok"
-
-
 from fastapi.testclient import TestClient
-from apps.api.main import app
+from apps.api.mainold import app
 
 client = TestClient(app)
 

@@ -63,3 +63,15 @@ def write_profile(profile: EvidenceProfile, out_dir: str = "outputs/profile") ->
     path = Path(out_dir) / f"profile_{profile.version}_{ts}.json"
     path.write_text(profile.model_dump_json(indent=2), encoding="utf-8")
     return path
+
+
+import json
+
+def latest_profile_path(out_dir: str = "outputs/profile") -> str | None:
+    files = sorted(Path(out_dir).glob("profile_*.json"))
+    return str(files[-1]) if files else None
+
+def load_profile(path: str | Path) -> EvidenceProfile:
+    p = Path(path)
+    data = json.loads(p.read_text(encoding="utf-8"))
+    return EvidenceProfile(**data)

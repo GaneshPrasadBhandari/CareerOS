@@ -7,6 +7,7 @@ import json
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
+import uuid
 
 from careeros.tracking.schema import ApplicationRecord, ApplicationStatus
 
@@ -74,3 +75,50 @@ def update_status_jsonl(
             f.write("\n")
 
     return ApplicationRecord.model_validate(updated)
+
+
+
+
+def create_application_record(
+    *,
+    run_id: str,
+    job_path: Optional[str],
+    package_path: str,
+    validation_report_path: str,
+    export_docx_path: Optional[str] = None,
+    export_pdf_path: Optional[str] = None,
+    status: ApplicationStatus = "exported",
+) -> ApplicationRecord:
+    """
+    Stable constructor used by P8/P12.
+    Creates a new ApplicationRecord with a unique application_id.
+    """
+    app_id = f"app_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:8]}"
+    now = _utc_now()
+
+    return ApplicationRecord(
+        version="v1",
+        application_id=app_id,
+        run_id=run_id,
+        job_path=job_path,
+        package_path=package_path,
+        validation_report_path=validation_report_path,
+        export_docx_path=export_docx_path,
+        export_pdf_path=export_pdf_path,
+        status=status,
+        created_at_utc=now,
+        updated_at_utc=now,
+    )
+
+
+def write_application_record(
+    record: ApplicationRecord,
+    *,
+    tracking_path: str = "outputs/apply_tracking/applications_v1.jsonl",
+) -> str:
+    """
+    Stable writer used by P8/P12.
+    Appends one record to the JSONL ledger.
+    """
+    p = append_jsonl(tracking_path, record)
+    return str(p)

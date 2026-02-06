@@ -306,9 +306,21 @@ st.header("P10 — Next Actions (Follow-up Scheduler)")
 
 col1, col2 = st.columns(2)
 with col1:
-    followup_days = st.number_input("Follow-up after idle days", min_value=1, max_value=14, value=3)
+    followup_days = st.number_input(
+    "Follow-up after idle days",
+    min_value=1,
+    max_value=14,
+    value=3,
+    key="p10_followup_days",
+)
 with col2:
-    stale_days = st.number_input("Stale application days", min_value=7, max_value=60, value=14)
+    stale_days = st.number_input(
+    "Stale application days",
+    min_value=7,
+    max_value=60,
+    value=14,
+    key="p10_stale_days",
+)
 
 def _render_queue(q: dict):
     st.subheader("Action Queue")
@@ -405,5 +417,72 @@ if st.button("Load Latest Drafts"):
             _render_drafts(b)
         else:
             st.json(data)
+    else:
+        st.error(resp.text)
+
+
+# 
+#add section for p12 orchestrator
+# st.header("P12 — One-Click Orchestration (P6→P11)")
+
+# profile_path = st.text_input("profile_path (latest or choose)", value="")
+# job_path = st.text_input("job_path (latest or choose)", value="")
+# overlap_skills_csv = st.text_input("overlap_skills (comma-separated)", value="python,docker")
+
+# if st.button("Run Orchestrator"):
+#     payload = {
+#         "profile_path": profile_path.strip(),
+#         "job_path": job_path.strip(),
+#         "overlap_skills": [s.strip() for s in overlap_skills_csv.split(",") if s.strip()],
+#         "tracking_path": "outputs/apply_tracking/applications_v1.jsonl",
+#     }
+#     resp = requests.post(f"{api_url}/orchestrator/run", json=payload, timeout=60)
+#     if resp.status_code == 200:
+#         data = resp.json()
+#         st.subheader(f"Run status: {data.get('status')} | run_id: {data.get('run_id')}")
+#         st.json(data)
+#     else:
+#         st.error(resp.text)
+
+
+st.header("P12 — One-Click Orchestration (P6→P11)")
+
+profile_path = st.text_input("profile_path (latest or choose)", value="")
+job_path = st.text_input("job_path (latest or choose)", value="")
+overlap_skills_txt = st.text_input("overlap_skills (comma-separated)", value="python,docker")
+
+followup_days = st.number_input(
+    "Follow-up after idle days",
+    min_value=1,
+    max_value=14,
+    value=3,
+    key="p12_followup_days",
+)
+
+stale_days = st.number_input(
+    "Stale application days",
+    min_value=7,
+    max_value=60,
+    value=14,
+    key="p12_stale_days",
+)
+
+if st.button("Run Orchestrator"):
+    payload = {
+        "profile_path": profile_path.strip() or None,
+        "job_path": job_path.strip() or None,
+        "overlap_skills": [s.strip() for s in overlap_skills_txt.split(",") if s.strip()],
+    }
+
+    resp = requests.post(
+        f"{api_url}/orchestrator/run",
+        params={"followup_days": int(followup_days), "stale_days": int(stale_days)},
+        json=payload,
+        timeout=60,
+    )
+
+    if resp.status_code == 200:
+        st.success("Orchestrator ran")
+        st.json(resp.json())
     else:
         st.error(resp.text)

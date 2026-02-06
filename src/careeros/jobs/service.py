@@ -34,3 +34,15 @@ def write_jobpost(job: JobPost, out_dir: str = "outputs/jobs") -> Path:
     path = Path(out_dir) / f"job_post_{job.version}_{ts}.json"
     path.write_text(job.model_dump_json(indent=2), encoding="utf-8")
     return path
+
+
+import json
+
+def latest_job_post_path(out_dir: str = "outputs/jobs") -> str | None:
+    files = sorted(Path(out_dir).glob("job_post_*.json"))
+    return str(files[-1]) if files else None
+
+def load_job_post(path: str | Path) -> JobPost:
+    p = Path(path)
+    data = json.loads(p.read_text(encoding="utf-8"))
+    return JobPost(**data)

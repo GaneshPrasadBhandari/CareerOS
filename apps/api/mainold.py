@@ -1,54 +1,51 @@
 from __future__ import annotations
-
-import glob
-from pathlib import Path
-from typing import Optional
-
-from fastapi import FastAPI, HTTPException, Query, Request
-from fastapi.responses import JSONResponse
-from pydantic import BaseModel
+from fastapi import FastAPI
 
 from careeros.core.settings import load_settings
-from careeros.core.logging import get_logger, new_run_id, log_event, log_exception
+from careeros.core.logging import get_logger, new_run_id, log_event
 
-# P1
 from careeros.intake.schema import IntakeBundle
 from careeros.intake.service import write_intake_bundle
 
-# P2
+from pydantic import BaseModel
 from careeros.parsing.service import build_profile_from_text, write_profile
-from careeros.parsing.schema import EvidenceProfile
 
-# P3
+from careeros.core.logging import get_logger, new_run_id, log_event, log_exception
+
+from pydantic import BaseModel
 from careeros.jobs.service import build_jobpost_from_text, write_jobpost
-from careeros.jobs.schema import JobPost
 
-# P4
+from pathlib import Path
+import glob
+import json
+
+from careeros.parsing.schema import EvidenceProfile
+from careeros.jobs.schema import JobPost
 from careeros.matching.service import compute_match, write_match_result
 
-# P5
 from careeros.ranking.service import rank_all_jobs, write_shortlist
-from careeros.ranking.schema import RankedShortlist
 
-# P6
+from careeros.ranking.schema import RankedShortlist
+from careeros.parsing.schema import EvidenceProfile
+from careeros.jobs.schema import JobPost
 from careeros.generation.service import build_package, write_application_package
+
+from careeros.guardrails.service import validate_package_against_evidence, write_validation_report, latest
+from careeros.guardrails.schema import ValidationReport
 from careeros.generation.schema import ApplicationPackage
 
-# P7
-from careeros.guardrails.service import validate_package_against_evidence, write_validation_report
-from careeros.guardrails.schema import ValidationReport
+from fastapi import FastAPI, HTTPException
 
-# P8
+# NEW imports for P8
 from careeros.export.schema import ExportRequest, ExportResult
 from careeros.export.service import export_latest_validated_package
 from careeros.tracking.schema import ApplicationRecord, ApplicationStatus
 from careeros.tracking.service import append_jsonl, update_status_jsonl, _utc_now
 
-# P9
 from careeros.analytics.schema import FunnelMetrics, ListApplicationsResponse
 from careeros.analytics.service import list_applications, compute_metrics, get_application
+from fastapi import Query
 
-# P10
 from careeros.followups.service import (
     generate_next_actions,
     write_action_queue,
@@ -57,7 +54,8 @@ from careeros.followups.service import (
     action_queue_to_dict,
 )
 
-# P11
+
+from careeros.followups.service import latest_action_queue_path
 from careeros.notifications.service import (
     generate_drafts_from_followups,
     write_drafts_bundle,
@@ -66,22 +64,26 @@ from careeros.notifications.service import (
     draft_bundle_to_dict,
 )
 
-# P12
+
 from careeros.orchestrator.service import run_p6_to_p11
 
 
-# ------------------------------------------------------------------------------
-# App boot
-# ------------------------------------------------------------------------------
+
+
+
+
 settings = load_settings()
 logger = get_logger()
 
 app = FastAPI(title="CareerOS API", version="0.1.0")
 
 
-# ------------------------------------------------------------------------------
-# Global exception handler
-# ------------------------------------------------------------------------------
+from fastapi import Request
+from fastapi.responses import JSONResponse
+
+logger = get_logger()
+
+
 @app.exception_handler(Exception)
 async def handle_unexpected_error(request: Request, exc: Exception):
     run_id = new_run_id()
@@ -92,17 +94,7 @@ async def handle_unexpected_error(request: Request, exc: Exception):
     )
 
 
-# ------------------------------------------------------------------------------
-# Small helpers
-# ------------------------------------------------------------------------------
-def latest_file(pattern: str) -> Optional[str]:
-    files = sorted(glob.glob(pattern))
-    return files[-1] if files else None
 
-
-# ------------------------------------------------------------------------------
-# Base endpoints
-# ------------------------------------------------------------------------------
 @app.get("/")
 def root():
     run_id = new_run_id()
@@ -131,9 +123,6 @@ def version():
     }
 
 
-# ------------------------------------------------------------------------------
-# P1 — Intake
-# ------------------------------------------------------------------------------
 @app.post("/intake")
 def create_intake(bundle: IntakeBundle):
     run_id = new_run_id()
@@ -142,13 +131,9 @@ def create_intake(bundle: IntakeBundle):
     return {"status": "ok", "path": str(out_path), "run_id": run_id}
 
 
-# ------------------------------------------------------------------------------
-# P2 — Profile
-# ------------------------------------------------------------------------------
 class ProfileRequest(BaseModel):
     candidate_name: str | None = None
     resume_text: str
-
 
 @app.post("/profile")
 def create_profile(req: ProfileRequest):
@@ -164,13 +149,10 @@ def debug_error():
     raise RuntimeError("Forced error to verify logging + exception handling")
 
 
-# ------------------------------------------------------------------------------
-# P3 — Job ingestion
-# ------------------------------------------------------------------------------
+
 class JobIngestRequest(BaseModel):
     url: str | None = None
     job_text: str
-
 
 @app.post("/jobs/ingest")
 def ingest_job(req: JobIngestRequest):
@@ -181,9 +163,12 @@ def ingest_job(req: JobIngestRequest):
     return {"status": "ok", "path": str(out_path), "keywords": job.keywords, "run_id": run_id}
 
 
-# ------------------------------------------------------------------------------
-# P4 — Matching (latest profile + latest job)
-# ------------------------------------------------------------------------------
+
+#Add API endpoint: run matching on the latest artifacts
+def latest_file(pattern: str) -> str | None:
+    files = sorted(glob.glob(pattern))
+    return files[-1] if files else None
+
 @app.post("/match/run")
 def run_match():
     run_id = new_run_id()
@@ -192,7 +177,7 @@ def run_match():
     job_fp = latest_file("outputs/jobs/job_post_v1_*.json")
 
     if not profile_fp or not job_fp:
-        return {"status": "error", "message": "Missing profile or job artifacts. Run P2 and P3 first.", "run_id": run_id}
+        return {"status": "error", "message": "Missing profile or job artifacts. Run L2 and L3 first.", "run_id": run_id}
 
     profile = EvidenceProfile.model_validate_json(Path(profile_fp).read_text(encoding="utf-8"))
     job = JobPost.model_validate_json(Path(job_fp).read_text(encoding="utf-8"))
@@ -201,51 +186,45 @@ def run_match():
     out_path = write_match_result(result)
 
     log_event(logger, "match_completed", run_id, score=result.score, path=str(out_path))
-    return {
-        "status": "ok",
-        "path": str(out_path),
-        "score": result.score,
-        "run_id": run_id,
-        "overlap": result.overlap_skills,
-        "missing": result.missing_skills,
-    }
+    return {"status": "ok", "path": str(out_path), "score": result.score, "run_id": run_id, "overlap": result.overlap_skills}
 
 
-# ------------------------------------------------------------------------------
-# P5 — Ranking
-# ------------------------------------------------------------------------------
+
+#Add API endpoint: /rank/run for raniking jobs
 @app.post("/rank/run")
 def run_ranking(top_n: int = 3):
     run_id = new_run_id()
 
-    profile_fp = latest_file("outputs/profile/profile_v1_*.json")
-    if not profile_fp:
-        return {"status": "error", "message": "No profile artifacts found. Run P2 first.", "run_id": run_id}
+    profile_files = sorted(glob.glob("outputs/profile/profile_v1_*.json"))
+    if not profile_files:
+        return {"status": "error", "message": "No profile artifacts found. Run L2 first.", "run_id": run_id}
+
+    profile_path = profile_files[-1]
 
     try:
-        shortlist = rank_all_jobs(profile_path=profile_fp, top_n=top_n, run_id=run_id)
+        shortlist = rank_all_jobs(profile_path=profile_path, top_n=top_n, run_id=run_id)
         out_path = write_shortlist(shortlist)
         log_event(logger, "ranking_completed", run_id, top_n=top_n, path=str(out_path))
-        return {
-            "status": "ok",
-            "path": str(out_path),
-            "run_id": run_id,
-            "top_n": top_n,
-            "items": [i.model_dump() for i in shortlist.items],
-        }
+        return {"status": "ok", "path": str(out_path), "run_id": run_id, "top_n": top_n, "items": [i.model_dump() for i in shortlist.items]}
     except Exception as e:
         log_exception(logger, "ranking_failed", run_id, e)
         return {"status": "error", "message": str(e), "run_id": run_id}
 
 
-# ------------------------------------------------------------------------------
-# P6 — Generation (Top-1 from shortlist)
-# ------------------------------------------------------------------------------
+
+
+#Add API endpoint: generate package for Top-1 job
+#Add helper to get latest file
+def latest(pattern: str) -> str | None:
+    files = sorted(glob.glob(pattern))
+    return files[-1] if files else None
+
+#Add endpoint
 @app.post("/generate/package")
 def generate_package():
     run_id = new_run_id()
 
-    shortlist_fp = latest_file("outputs/ranking/shortlist_v1_*.json")
+    shortlist_fp = latest("outputs/ranking/shortlist_v1_*.json")
     if not shortlist_fp:
         return {"status": "error", "message": "No shortlist found. Run P5 ranking first.", "run_id": run_id}
 
@@ -253,6 +232,7 @@ def generate_package():
     if not shortlist.items:
         return {"status": "error", "message": "Shortlist is empty.", "run_id": run_id}
 
+    # Top-1 job
     top_item = shortlist.items[0]
     profile_fp = shortlist.profile_path
     job_fp = top_item.job_path
@@ -274,15 +254,14 @@ def generate_package():
     return {"status": "ok", "path": str(out_path), "run_id": run_id}
 
 
-# ------------------------------------------------------------------------------
-# P7 — Guardrails
-# ------------------------------------------------------------------------------
+#Add API endpoint: validate latest package
+#Add endpoint
 @app.post("/guardrails/validate")
 def validate_latest_package():
     run_id = new_run_id()
 
-    pkg_fp = latest_file("exports/packages/application_package_v1_*.json")
-    profile_fp = latest_file("outputs/profile/profile_v1_*.json")
+    pkg_fp = latest("exports/packages/application_package_v1_*.json")
+    profile_fp = latest("outputs/profile/profile_v1_*.json")
 
     if not pkg_fp or not profile_fp:
         return {"status": "error", "message": "Missing package or profile artifacts. Run P2 and P6 first.", "run_id": run_id}
@@ -290,7 +269,7 @@ def validate_latest_package():
     profile = EvidenceProfile.model_validate_json(Path(profile_fp).read_text(encoding="utf-8"))
     pkg = ApplicationPackage.model_validate_json(Path(pkg_fp).read_text(encoding="utf-8"))
 
-    report: ValidationReport = validate_package_against_evidence(profile, pkg, run_id, pkg_fp)
+    report = validate_package_against_evidence(profile, pkg, run_id, pkg_fp)
     out_path = write_validation_report(report)
 
     if report.status == "blocked":
@@ -301,11 +280,11 @@ def validate_latest_package():
     return {"status": "pass", "path": str(out_path), "run_id": run_id}
 
 
-# ------------------------------------------------------------------------------
-# P8 — Export + Apply Tracking
-# ------------------------------------------------------------------------------
-TRACKING_PATH = "outputs/apply_tracking/applications_v1.jsonl"
 
+#add P8 routes
+# ---- P8: Export + Apply Tracking ----
+
+TRACKING_PATH = "outputs/apply_tracking/applications_v1.jsonl"
 
 @app.post("/export/package", response_model=ExportResult)
 def export_package(req: ExportRequest):
@@ -328,7 +307,7 @@ def export_package(req: ExportRequest):
     record = ApplicationRecord(
         application_id=meta["application_id"],
         run_id=meta["run_id"],
-        job_path=None,
+        job_path=None,  # optional; can be derived later from meta["package_path"] content
         package_path=meta["package_path"],
         validation_report_path=meta["validation_report_path"],
         export_docx_path=meta["docx_path"],
@@ -360,12 +339,11 @@ def apply_update_status(req: UpdateStatusRequest):
     rec = update_status_jsonl(TRACKING_PATH, req.application_id, req.new_status)
     if rec is None:
         raise HTTPException(status_code=404, detail="application_id not found in tracking file")
-    return rec
+    return 
 
 
-# ------------------------------------------------------------------------------
-# P9 — Analytics
-# ------------------------------------------------------------------------------
+
+#add route for P9
 @app.get("/applications/list", response_model=ListApplicationsResponse)
 def applications_list(
     status: str | None = Query(default=None),
@@ -387,44 +365,42 @@ def applications_get(application_id: str):
     return rec
 
 
-# ------------------------------------------------------------------------------
-# P10 — Followups
-# ------------------------------------------------------------------------------
+#add api routes for p10
 @app.post("/followups/generate")
 def followups_generate(followup_days: int = 3, stale_days: int = 14):
     queue = generate_next_actions(TRACKING_PATH, followup_days=followup_days, stale_days=stale_days)
     path = write_action_queue(queue)
-    return {
-        "status": "ok",
-        "path": str(path),
-        "queue": action_queue_to_dict(queue),
-        "total": queue.total,
-    }
-
+    return {"status": "ok", "path": str(path), "total": queue.total}
 
 @app.get("/followups/latest")
 def followups_latest():
-    path = latest_action_queue_path()
-    if not path:
+    try:
+        path = latest_action_queue_path()
+        if not path:
+            return {
+                "status": "error",
+                "code": "not_found",
+                "message": "No followups queue found yet. Run /followups/generate first.",
+            }
+
+        q = load_action_queue(path)
         return {
-            "status": "error",
-            "code": "not_found",
-            "message": "No followups queue found yet. Run /followups/generate first.",
+            "status": "ok",
+            "path": path,
+            "queue": action_queue_to_dict(q),
         }
 
-    q = load_action_queue(path)
-    return {
-        "status": "ok",
-        "path": path,
-        "queue": action_queue_to_dict(q),
-    }
+    except Exception as e:
+        return {
+            "status": "error",
+            "code": "internal_error",
+            "message": f"Unexpected error: {e}",
+        }
 
-
-# ------------------------------------------------------------------------------
-# P11 — Notifications / Drafts
-# ------------------------------------------------------------------------------
+#add endpints for p11
 @app.post("/notifications/generate")
 def notifications_generate():
+    # use latest followups as source
     followups_path = latest_action_queue_path()
     if not followups_path:
         return {
@@ -463,9 +439,8 @@ def notifications_latest():
     }
 
 
-# ------------------------------------------------------------------------------
-# P12 — Orchestrator (P6 → P11)
-# ------------------------------------------------------------------------------
+#add endpoint for P12 orchestrator 
 @app.post("/orchestrator/run")
 def orchestrator_run(followup_days: int = 3, stale_days: int = 14):
     return run_p6_to_p11(followup_days=followup_days, stale_days=stale_days)
+
