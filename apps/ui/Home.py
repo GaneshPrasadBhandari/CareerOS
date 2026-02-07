@@ -489,40 +489,68 @@ if st.button("Run Orchestrator"):
 
 
 
-# --- NEW: P15 Human Approval Gate Section ---
+# --- P15 Human Approval Gate (L5) ---
 st.header("P15 — Human Approval Gate (L5)")
 
-# In a real run, you'd fetch the latest state from your P14 Orchestrator
+# 1. Fetch the pending state from the backend
 if st.button("Check for Pending Approvals"):
     try:
-        # Assuming your API has a new endpoint to get the current state
+        # Calls the GET route we implemented in src/api/routes/orchestrator.py
         r = httpx.get(f"{api_url}/orchestrator/current_state", timeout=10)
         if r.status_code == 200:
             state_data = r.json()
-            st.session_state['current_state'] = state_data
-            st.success("Pending match found!")
+            if state_data.get("status") == "idle":
+                st.info(state_data.get("message"))
+                if 'current_state' in st.session_state:
+                    del st.session_state['current_state']
+            else:
+                st.session_state['current_state'] = state_data
+                st.success("Pending match found!")
         else:
-            st.info("No matches pending approval.")
+            st.error(f"Error: Received status code {r.status_code}")
     except Exception as e:
         st.error(f"Error fetching state: {e}")
 
-# If we have a state in memory, show the approval UI
+# 2. Display UI if a valid state is stored in session_state
 if 'current_state' in st.session_state:
     cs = st.session_state['current_state']
     
     with st.container(border=True):
-        st.subheader(f"Review Match: {cs.get('top_match_id')}")
-        st.metric("AI Match Score", f"{cs.get('match_score', 0)*100:.1f}%")
+        st.subheader(f"Review Match: {cs.get('top_match_id', 'Unknown ID')}")
         
-        feedback = st.text_area("Feedback for Creator Agent", placeholder="E.g., Emphasize my AWS experience more.")
+        # Format the score as a percentage for readability
+        score = cs.get('match_score', 0)
+        st.metric("AI Match Score", f"{score*100:.1f}%")
+        
+        feedback = st.text_area(
+            "Feedback for Creator Agent", 
+            placeholder="E.g., Emphasize my AWS experience more.",
+            key="approval_feedback"
+        )
         
         col_app, col_rej = st.columns(2)
-        if col_app.button("✅ Approve Match", type="primary"):
-            # Update the state via API
-            payload = {"is_approved": True, "user_feedback": feedback}
-            requests.post(f"{api_url}/orchestrator/approve", json=payload)
-            st.success("Approved! You can now run P6 Generation.")
+        
+        # Approve Logic
+        if col_app.button("✅ Approve Match", type="primary", use_container_width=True):
+            # Backend logic only requires the feedback dictionary
+            payload = {"user_feedback": feedback}
+            try:
+                resp = httpx.post(f"{api_url}/orchestrator/approve", json=payload, timeout=10)
+                if resp.status_code == 200:
+                    st.success("Match Approved! You can now run P6 Generation.")
+                    # Refresh local state to reflect approval if desired
+                    del st.session_state['current_state']
+                else:
+                    st.error(f"Approval failed: {resp.text}")
+            except Exception as e:
+                st.error(f"Connection error: {e}")
             
-        if col_rej.button("❌ Reject & Re-Rank"):
-            requests.post(f"{api_url}/orchestrator/reject", json={"feedback": feedback})
-            st.warning("Match rejected. CEO will look for alternatives.")
+        # Reject Logic
+        if col_rej.button("❌ Reject & Re-Rank", use_container_width=True):
+            try:
+                # Assuming you have or will add a /reject endpoint
+                resp = httpx.post(f"{api_url}/orchestrator/reject", json={"feedback": feedback}, timeout=10)
+                st.warning("Match rejected. Orchestrator will look for alternatives.")
+                del st.session_state['current_state']
+            except Exception as e:
+                st.error(f"Connection error: {e}")

@@ -163,11 +163,3 @@
 {"ts": "2026-02-07T01:37:30.370250Z", "level": "INFO", "logger": "careeros", "event": "api_health_called", "run_id": "2edbc42b643e40ea8dda5648ef80bb41", "env": "dev"}
 {"ts": "2026-02-07T01:46:38.165416Z", "level": "INFO", "logger": "careeros", "event": "api_health_called", "run_id": "b181fdf2bef34c16b94d33fbb9fac15a", "env": "dev"}
 {"ts": "2026-02-07T18:25:17.594932Z", "level": "INFO", "logger": "careeros", "event": "api_health_called", "run_id": "34f65eab13514738840de6f74d39369a", "env": "dev"}
-{"ts": "2026-02-07T19:22:54.662924Z", "level": "INFO", "logger": "careeros", "event": "api_health_called", "run_id": "a2a1de82e1a145dfac49cd889049f371", "env": "dev"}
-{"ts": "2026-02-07T19:22:57.960864Z", "level": "INFO", "logger": "careeros", "event": "api_version_called", "run_id": "bb12877c32a6460b90e0975eddbf5283", "env": "dev"}
-{"ts": "2026-02-07T19:23:02.129699Z", "level": "INFO", "logger": "careeros", "event": "intake_created", "run_id": "d158fbfd3a7b4c0a865e1b4097f9859c", "path": "outputs/intake/intake_bundle_v1_20260207_192302.json"}
-{"ts": "2026-02-07T19:23:05.471707Z", "level": "INFO", "logger": "careeros", "event": "profile_created", "run_id": "abc1b3f99c7841efa423c38f5a061879", "path": "outputs/profile/profile_v1_20260207_192305.json", "skills": 0}
-{"ts": "2026-02-07T19:23:08.702819Z", "level": "INFO", "logger": "careeros", "event": "job_ingested", "run_id": "c1789a6556e64bdbbaeaa336bfff3b1e", "path": "outputs/jobs/job_post_v1_20260207_192308.json", "keywords": 0}
-{"ts": "2026-02-07T19:23:11.376153Z", "level": "INFO", "logger": "careeros", "event": "match_completed", "run_id": "18a37814600545a2b89463776a8f9f45", "score": 0.0, "path": "outputs/matching/match_result_v1_20260207_192311.json"}
-{"ts": "2026-02-07T19:23:14.161795Z", "level": "INFO", "logger": "careeros", "event": "ranking_completed", "run_id": "5ae6a3849f8149bbbea59f732c690b12", "top_n": 3, "path": "outputs/ranking/shortlist_v1_20260207_192314.json"}
-{"ts": "2026-02-07T19:23:19.712592Z", "level": "INFO", "logger": "careeros", "event": "package_generated", "run_id": "4a9417e416e242219b585e33a824befa", "path": "exports/packages/application_package_v1_v1_20260204_175449_20260207_192319.json", "job_path": "outputs/jobs/job_post_v1_20260204_175449.json"}
