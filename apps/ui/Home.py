@@ -486,3 +486,43 @@ if st.button("Run Orchestrator"):
         st.json(resp.json())
     else:
         st.error(resp.text)
+
+
+
+# --- NEW: P15 Human Approval Gate Section ---
+st.header("P15 — Human Approval Gate (L5)")
+
+# In a real run, you'd fetch the latest state from your P14 Orchestrator
+if st.button("Check for Pending Approvals"):
+    try:
+        # Assuming your API has a new endpoint to get the current state
+        r = httpx.get(f"{api_url}/orchestrator/current_state", timeout=10)
+        if r.status_code == 200:
+            state_data = r.json()
+            st.session_state['current_state'] = state_data
+            st.success("Pending match found!")
+        else:
+            st.info("No matches pending approval.")
+    except Exception as e:
+        st.error(f"Error fetching state: {e}")
+
+# If we have a state in memory, show the approval UI
+if 'current_state' in st.session_state:
+    cs = st.session_state['current_state']
+    
+    with st.container(border=True):
+        st.subheader(f"Review Match: {cs.get('top_match_id')}")
+        st.metric("AI Match Score", f"{cs.get('match_score', 0)*100:.1f}%")
+        
+        feedback = st.text_area("Feedback for Creator Agent", placeholder="E.g., Emphasize my AWS experience more.")
+        
+        col_app, col_rej = st.columns(2)
+        if col_app.button("✅ Approve Match", type="primary"):
+            # Update the state via API
+            payload = {"is_approved": True, "user_feedback": feedback}
+            requests.post(f"{api_url}/orchestrator/approve", json=payload)
+            st.success("Approved! You can now run P6 Generation.")
+            
+        if col_rej.button("❌ Reject & Re-Rank"):
+            requests.post(f"{api_url}/orchestrator/reject", json={"feedback": feedback})
+            st.warning("Match rejected. CEO will look for alternatives.")
