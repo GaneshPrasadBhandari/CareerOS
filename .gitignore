@@ -208,11 +208,6 @@ __marimo__/
 .DS_Store
 
 
-# CareerOS runtime artifacts (do not commit)
-logs/
-outputs/
-artifacts/
-exports/
 
 # MLflow local tracking (if you run local file-based tracking)
 mlruns/
@@ -229,8 +224,12 @@ mlruns/
 notebooks/**/.ipynb_checkpoints/
 
 
-outputs/*
+# CareerOS: Ignore data but keep DVC pointers
+outputs/**
+!outputs/
+!outputs/**/.gitignore
 !outputs/**/.gitkeep
+!outputs/**/*.dvc
 
 
 # ===== CareerOS: runtime artifacts (do not commit) =====
