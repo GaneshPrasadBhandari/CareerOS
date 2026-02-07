@@ -1,0 +1,52 @@
+{
+  "version": "v1",
+  "run_id": "61ff0a8628b245cf852916d681987ed5",
+  "profile_path": "outputs/profile/profile_v1_20260204_232607.json",
+  "job_path": "outputs/jobs/job_post_v1_20260204_230419.json",
+  "job_title_hint": null,
+  "company_hint": null,
+  "bullets": [
+    {
+      "text": "Designed and delivered production-ready AI/ML solutions using docker, fastapi, python, sql, streamlit.",
+      "evidence_skills": [
+        "docker",
+        "fastapi",
+        "python",
+        "sql",
+        "streamlit"
+      ]
+    },
+    {
+      "text": "Built scalable APIs and workflows using docker, fastapi, python, sql, streamlit to support real-world deployments.",
+      "evidence_skills": [
+        "docker",
+        "fastapi",
+        "python",
+        "sql",
+        "streamlit"
+      ]
+    },
+    {
+      "text": "Implemented MLOps practices for reproducibility and tracking using docker, fastapi, python, sql, streamlit.",
+      "evidence_skills": [
+        "docker",
+        "fastapi",
+        "python",
+        "sql",
+        "streamlit"
+      ]
+    }
+  ],
+  "cover_letter": {
+    "subject": "Application for the role",
+    "paragraphs": [
+      "Hello Hiring Team, I’m applying for the role. My background aligns strongly with the role’s needs, particularly in docker, fastapi, python, sql, streamlit.",
+      "I focus on building production-grade systems: clean APIs, reliable pipelines, and measurable outcomes. I value traceability, safety, and governance in AI delivery.",
+      "If helpful, I can share examples of end-to-end work covering design, implementation, testing, and deployment. Thank you for your time and consideration."
+    ]
+  },
+  "qa_stubs": {
+    "Why are you a fit for this role?": "My experience in docker, fastapi, python, sql, streamlit matches the role requirements, and I build production-ready systems with strong engineering discipline.",
+    "What are your strongest skills?": "docker, fastapi, python, sql, streamlit"
+  }
+}

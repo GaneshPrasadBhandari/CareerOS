@@ -82,6 +82,8 @@ from careeros.agentic.p14_orchestrator import run_plan_p6_to_p11
 from pydantic import BaseModel
 
 
+#p15
+from src.api.routes import orchestrator
 
 
 
@@ -540,3 +542,7 @@ def runs_execute_plan(req: P14RunRequest):
         stale_days=req.stale_days,
         tracking_path=req.tracking_path,
     )
+
+
+#p15
+app.include_router(orchestrator.router, tags=["P15-Human-Gate"])

@@ -1,0 +1,52 @@
+{
+  "version": "v1",
+  "run_id": "ff1d98a98ad34642ad5a53d9a0fb6e45",
+  "profile_path": "outputs/profile/profile_v1_20260204_004142.json",
+  "job_path": "outputs/jobs/job_post_v1_20260204_175449.json",
+  "job_title_hint": null,
+  "company_hint": null,
+  "bullets": [
+    {
+      "text": "Designed and delivered production-ready AI/ML solutions using python, docker,snowflake",
+      "evidence_skills": [
+        "aws",
+        "azure",
+        "docker",
+        "fastapi",
+        "genai"
+      ]
+    },
+    {
+      "text": "Built scalable APIs and workflows using aws, azure, docker, fastapi, genai to support real-world deployments.",
+      "evidence_skills": [
+        "aws",
+        "azure",
+        "docker",
+        "fastapi",
+        "genai"
+      ]
+    },
+    {
+      "text": "Implemented MLOps practices for reproducibility and tracking using aws, azure, mbbs,docker, fastapi, genai.",
+      "evidence_skills": [
+        "aws",
+        "azure",
+        "docker",
+        "fastapi",
+        "genai"
+      ]
+    }
+  ],
+  "cover_letter": {
+    "subject": "Application for the role",
+    "paragraphs": [
+      "Hello Hiring Team, I’m applying for the role. My background aligns strongly with the role’s needs, particularly in aws, azure, docker, fastapi, genai, kubernetes.",
+      "I focus on building production-grade systems: clean APIs, reliable pipelines, and measurable outcomes. I value traceability, safety, and governance in AI delivery.",
+      "If helpful, I can share examples of end-to-end work covering design, implementation, testing, and deployment. Thank you for your time and consideration."
+    ]
+  },
+  "qa_stubs": {
+    "Why are you a fit for this role?": "My experience in aws, azure, docker, fastapi, genai, kubernetes matches the role requirements, and I build production-ready systems with strong engineering discipline.",
+    "What are your strongest skills?": "aws, azure, docker, fastapi, genai, kubernetes, langchain, langgraph"
+  }
+}
