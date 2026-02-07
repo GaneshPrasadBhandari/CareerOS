@@ -14,7 +14,7 @@
 - **Constraint:** These agents MUST pull from the L8 Knowledge Layer and are blocked from fabricating skills.
 
 ## Tier 4: The Safety Gate (Layer 5 - Human-in-the-Loop)
-- **Status:** SYSTEM PAUSE.
+- **Status:** Add this line to Tier 4: "The system implements the pause by setting is_approved: false in the state file and terminating the current execution loop until a new request is received with is_approved: true."
 - **Action:** User (Tanish/Sita) reviews generated artifacts. Progress to L6 is logically locked until a `Human_Approval_Artifact` exists.
 
 ## Tier 5: The Worker Agents (Layer 6 - Execution)

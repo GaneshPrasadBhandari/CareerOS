@@ -9,7 +9,7 @@ Phase 1 (P1–P12) is built on **Deterministic Functions** (no LLMs/Agents). [ci
 | **P1** | `intake_bundle.json` | `outputs/intake/` | [cite_start]Pydantic validation of user constraints[cite: 9, 11, 12]. |
 | **P2** | `profile.json` | `outputs/profile/` | [cite_start]Deterministic keyword extraction from resume[cite: 13, 14, 15]. |
 | **P3** | `job_post.json` | `outputs/jobs/` | [cite_start]Deterministic keyword extraction from Job Description[cite: 16, 17]. |
-| **P4/5**| `match_result.json` | `outputs/match/` | Set Math: `(Skills ∩ Keywords) / Total Keywords`[cite: 18, 19, 20]. |
+| **P4/5**| `match_result.json` | `outputs/match/` | Set Math: `(Skills ∩ Keywords) / Total Keywords`. **(Note: In Phase 2+, this is wrapped into `outputs/state/current_run.json`)** |
 | **P6/7**| `validated_gen.md` | `outputs/gen/` | [cite_start]Template filling + Guardrail claim-check[cite: 21, 22, 23]. |
 | **P8** | `.docx / .pdf` export | `exports/` | [cite_start]Conversion of approved JSON to document[cite: 24]. |
 | **P9** | `application_ledger` | `logs/` | [cite_start]Persistent log to prevent duplicate applications[cite: 25]. |
