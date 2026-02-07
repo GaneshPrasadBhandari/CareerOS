@@ -70,6 +70,21 @@ from careeros.notifications.service import (
 from careeros.orchestrator.service import run_p6_to_p11
 
 
+#P13
+from careeros.agentic.state import OrchestratorState
+from careeros.agentic.state_store import write_state
+from careeros.agentic.tools.registry import ToolRegistry
+from careeros.agentic.tools.spec import ToolSpec
+
+
+#P14 
+from careeros.agentic.p14_orchestrator import run_plan_p6_to_p11
+from pydantic import BaseModel
+
+
+
+
+
 # ------------------------------------------------------------------------------
 # App boot
 # ------------------------------------------------------------------------------
@@ -77,6 +92,39 @@ settings = load_settings()
 logger = get_logger()
 
 app = FastAPI(title="CareerOS API", version="0.1.0")
+
+
+# ------------------------------------------------------------------------------
+# P13 — Tool Registry (initial empty catalog; P14 will register real tools)
+# ------------------------------------------------------------------------------
+tool_registry = ToolRegistry()
+
+@app.get("/tools")
+def list_tools():
+    run_id = new_run_id()
+    log_event(logger, "tools_listed", run_id, count=len(tool_registry.list()))
+    return {"status": "ok", "tools": tool_registry.describe(), "run_id": run_id}
+
+
+class RunInitRequest(BaseModel):
+    env: str | None = None
+    orchestration_mode: str | None = None
+
+
+@app.post("/runs/init")
+def init_run(req: RunInitRequest):
+    run_id = new_run_id()
+    state = OrchestratorState(
+        run_id=run_id,
+        env=req.env or settings.env,
+        orchestration_mode=req.orchestration_mode or settings.orchestration_mode,
+    )
+    fp = write_state(state)
+    log_event(logger, "run_initialized", run_id, path=str(fp))
+    return {"status": "ok", "run_id": run_id, "state_path": str(fp)}
+
+
+
 
 
 # ------------------------------------------------------------------------------
@@ -469,3 +517,26 @@ def notifications_latest():
 @app.post("/orchestrator/run")
 def orchestrator_run(followup_days: int = 3, stale_days: int = 14):
     return run_p6_to_p11(followup_days=followup_days, stale_days=stale_days)
+
+
+#P14 - Agentic Orchestrator (P6 -> P11 with state + tool registry)
+class P14RunRequest(BaseModel):
+    run_id: str
+    profile_path: str
+    job_path: str
+    overlap_skills: list[str] = []
+    followup_days: int = 3
+    stale_days: int = 14
+    tracking_path: str = "outputs/apply_tracking/applications_v1.jsonl"
+
+@app.post("/runs/execute_plan")
+def runs_execute_plan(req: P14RunRequest):
+    return run_plan_p6_to_p11(
+        run_id=req.run_id,
+        profile_path=req.profile_path,
+        job_path=req.job_path,
+        overlap_skills=req.overlap_skills,
+        followup_days=req.followup_days,
+        stale_days=req.stale_days,
+        tracking_path=req.tracking_path,
+    )

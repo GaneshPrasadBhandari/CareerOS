@@ -1,9 +1,12 @@
 import streamlit as st
 import requests
+import os
 
 st.title("CareerOS Phase 2 — P13: State + Tool Registry")
 
-API = st.secrets.get("API_BASE_URL", "http://127.0.0.1:8000")
+
+API = os.getenv("CAREEROS_API_URL", "http://127.0.0.1:8000")
+
 
 st.write("API Base:", API)
 
