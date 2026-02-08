@@ -479,6 +479,18 @@ The architecture, tooling, and execution plan reflect real-world AI product deve
 ---
 
 
+---
+
+
+## Maintainer Automation Notes
+
+For maintainers using Codex automation:
+
+- Set `GH_PAT` in your environment before running PR automation tools.
+- Ensure your branch includes at least one committed change before creating a PR.
+- Keep PR titles scoped to the actual change (for example: `docs: add maintainer automation notes`).
+
+
 ## Copyright & Ownership
 
 © 2026 **Ganesh Prasad Bhandari**  
