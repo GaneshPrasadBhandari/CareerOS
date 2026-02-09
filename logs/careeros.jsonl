@@ -185,3 +185,4 @@
 {"ts": "2026-02-08T22:02:34.253134Z", "level": "INFO", "logger": "careeros", "event": "ranking_completed", "run_id": "05892bbe9db444d6aa7bcf3252301b58", "top_n": 3, "path": "outputs/ranking/shortlist_v1_20260208_220234.json"}
 {"ts": "2026-02-08T22:03:18.100530Z", "level": "INFO", "logger": "careeros", "event": "package_generated", "run_id": "4e34932bf7a548148f4d0ceff31a036e", "path": "exports/packages/application_package_v1_v1_20260208_220154_20260208_220318.json", "job_path": "outputs/jobs/job_post_v1_20260208_220154.json"}
 {"ts": "2026-02-09T18:13:00.412338Z", "level": "INFO", "logger": "careeros", "event": "api_health_called", "run_id": "08c6db7d96a14316a3969ad768d06d1c", "env": "dev"}
+{"ts": "2026-02-09T18:35:38.880338Z", "level": "INFO", "logger": "careeros", "event": "api_health_called", "run_id": "41de5271d715427ca32744553bd987bc", "env": "dev"}

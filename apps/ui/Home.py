@@ -2,6 +2,7 @@ import streamlit as st
 import httpx
 import requests
 import pandas as pd
+from careeros.evidence.service import get_evidence_for_job
 
 
 st.set_page_config(page_title="CareerOS", layout="wide")
@@ -421,30 +422,8 @@ if st.button("Load Latest Drafts"):
         st.error(resp.text)
 
 
-# 
+
 #add section for p12 orchestrator
-# st.header("P12 — One-Click Orchestration (P6→P11)")
-
-# profile_path = st.text_input("profile_path (latest or choose)", value="")
-# job_path = st.text_input("job_path (latest or choose)", value="")
-# overlap_skills_csv = st.text_input("overlap_skills (comma-separated)", value="python,docker")
-
-# if st.button("Run Orchestrator"):
-#     payload = {
-#         "profile_path": profile_path.strip(),
-#         "job_path": job_path.strip(),
-#         "overlap_skills": [s.strip() for s in overlap_skills_csv.split(",") if s.strip()],
-#         "tracking_path": "outputs/apply_tracking/applications_v1.jsonl",
-#     }
-#     resp = requests.post(f"{api_url}/orchestrator/run", json=payload, timeout=60)
-#     if resp.status_code == 200:
-#         data = resp.json()
-#         st.subheader(f"Run status: {data.get('status')} | run_id: {data.get('run_id')}")
-#         st.json(data)
-#     else:
-#         st.error(resp.text)
-
-
 st.header("P12 — One-Click Orchestration (P6→P11)")
 
 profile_path = st.text_input("profile_path (latest or choose)", value="")
@@ -554,3 +533,22 @@ if 'current_state' in st.session_state:
                 del st.session_state['current_state']
             except Exception as e:
                 st.error(f"Connection error: {e}")
+
+
+
+#P17 Grounded Generation (Resume + Job + Evidence → Cited Application Package)
+
+st.title("CareerOS - Grounded Generation")
+
+# Logic to show Evidence after matching
+if st.button("Analyze Evidence (P17)"):
+    # This retrieves the "Grounding Chunks" from your profile
+    evidence_results = get_evidence_for_job(resume_text, job_description)
+    
+    st.success(f"Found {len(evidence_results)} matching evidence chunks!")
+    
+    # Visualizing the Grounding
+    for item in evidence_results:
+        with st.expander(f"Evidence for Skill: {item.skill_name}"):
+            st.write(f"**Description:** {item.chunk_text}")
+            st.caption(f"Source Document: {item.source_file} | Chunk ID: {item.chunk_id}")
