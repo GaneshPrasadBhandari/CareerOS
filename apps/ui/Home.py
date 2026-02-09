@@ -2,7 +2,10 @@ import streamlit as st
 import httpx
 import requests
 import pandas as pd
-from careeros.evidence.service import get_evidence_for_job
+# Add this near the top of Home.py
+resume_text = ""
+job_desc = ""
+
 
 
 st.set_page_config(page_title="CareerOS", layout="wide")
@@ -536,19 +539,36 @@ if 'current_state' in st.session_state:
 
 
 
-#P17 Grounded Generation (Resume + Job + Evidence → Cited Application Package)
+# --- P17 GROUNDED EVIDENCE SECTION ---
+st.header("Step 3: Grounded Evidence Analysis")
 
-st.title("CareerOS - Grounded Generation")
+if st.button("Run P17 Grounding Analysis"):
+    from careeros.evidence.service import retrieve_chunks_for_skills
+    from careeros.parsing.schema import EvidenceProfile
 
-# Logic to show Evidence after matching
-if st.button("Analyze Evidence (P17)"):
-    # This retrieves the "Grounding Chunks" from your profile
-    evidence_results = get_evidence_for_job(resume_text, job_description)
-    
-    st.success(f"Found {len(evidence_results)} matching evidence chunks!")
-    
-    # Visualizing the Grounding
-    for item in evidence_results:
-        with st.expander(f"Evidence for Skill: {item.skill_name}"):
-            st.write(f"**Description:** {item.chunk_text}")
-            st.caption(f"Source Document: {item.source_file} | Chunk ID: {item.chunk_id}")
+    # FIX: Ensure these match the variables created by your st.text_area widgets!
+    # If your text area is 'job_desc', change 'job_description' to 'job_desc'
+    r_text = resume_text if 'resume_text' in locals() else ""
+    j_text = job_description if 'job_description' in locals() else ""
+
+    # If the above line still fails, check if your variable is named 'job_desc'
+    # and change it to: j_text = job_desc
+
+    resume_skills = [s.strip() for s in r_text.split(",") if s.strip()]
+    job_skills = [s.strip() for s in j_text.split(",") if s.strip()]
+
+    if not resume_skills or not job_skills:
+        st.error("Please ensure both Resume and Job Description fields have comma-separated skills.")
+    else:
+        profile = EvidenceProfile(skills=resume_skills)
+        result = retrieve_chunks_for_skills(profile, job_skills)
+
+        if result.chunks:
+            st.success(f"Verified {len(result.chunks)} matches found in your profile.")
+            for chunk in result.chunks:
+                with st.expander(f"📍 Evidence ID: {chunk.chunk_id}"):
+                    st.write(f"**Verification Statement:** {chunk.text}")
+                    st.write(f"**Source:** {chunk.source}")
+                    st.write(f"**Metadata Tags:** `{chunk.tags}`")
+        else:
+            st.warning("No direct matches found. The AI will need to 'infer' matches in the next step.")
