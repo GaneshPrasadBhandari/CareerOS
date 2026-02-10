@@ -90,3 +90,9 @@ Then run:
 PYTHONPATH=src uvicorn apps.api.main:app --host 0.0.0.0 --port 8000
 PYTHONPATH=src streamlit run apps/ui/Home.py --server.address 0.0.0.0 --server.port 8501
 ```
+
+
+## 8) New P15 helper actions
+- `Refresh from Latest Match`: rebuilds approval state from newest match artifact.
+- `Reset Approval State`: clears stale `outputs/state/current_run.json`.
+- `Reject & Re-Run Match/Rank`: rejects and automatically triggers P4 + P5 on latest artifacts.

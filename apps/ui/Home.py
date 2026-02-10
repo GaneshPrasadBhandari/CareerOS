@@ -499,9 +499,9 @@ if st.button("Run Orchestrator"):
 st.header("P15 — Human Approval Gate (L5)")
 
 # 1. Fetch the pending state from the backend
-if st.button("Check for Pending Approvals"):
+col_p15_a, col_p15_b, col_p15_c = st.columns(3)
+if col_p15_a.button("Check for Pending Approvals"):
     try:
-        # Calls the GET route we implemented in src/api/routes/orchestrator.py
         r = httpx.get(f"{api_url}/orchestrator/current_state", timeout=10)
         if r.status_code == 200:
             state_data = r.json()
@@ -516,6 +516,30 @@ if st.button("Check for Pending Approvals"):
             st.error(f"Error: Received status code {r.status_code}")
     except Exception as e:
         st.error(f"Error fetching state: {e}")
+
+if col_p15_b.button("Refresh from Latest Match"):
+    try:
+        r = httpx.get(f"{api_url}/orchestrator/current_state", params={"refresh": True}, timeout=10)
+        if r.status_code == 200:
+            st.session_state['current_state'] = r.json()
+            st.success("State refreshed from latest match artifact.")
+            st.json(r.json())
+        else:
+            st.error(r.text)
+    except Exception as e:
+        st.error(f"Refresh failed: {e}")
+
+if col_p15_c.button("Reset Approval State"):
+    try:
+        r = httpx.post(f"{api_url}/orchestrator/reset", timeout=10)
+        if r.status_code == 200:
+            st.session_state.pop('current_state', None)
+            st.success("State reset. Run matching/ranking again if needed.")
+        else:
+            st.error(r.text)
+    except Exception as e:
+        st.error(f"Reset failed: {e}")
+
 
 # 2. Display UI if a valid state is stored in session_state
 if 'current_state' in st.session_state:
@@ -532,6 +556,7 @@ if 'current_state' in st.session_state:
             score_val = 0.0
         score_pct = score_val if score_val > 1.0 else score_val * 100.0
         st.metric("AI Match Score", f"{score_pct:.1f}%")
+        st.caption(f"Overlap skills: {', '.join(cs.get('overlap_skills', [])[:10]) or 'n/a'}")
         
         feedback = st.text_area(
             "Feedback for Creator Agent", 
@@ -557,25 +582,40 @@ if 'current_state' in st.session_state:
                 st.error(f"Connection error: {e}")
             
         # Reject Logic
-        if col_rej.button("❌ Reject & Re-Rank", use_container_width=True):
+        if col_rej.button("❌ Reject & Re-Run Match/Rank", use_container_width=True):
             try:
-                # Assuming you have or will add a /reject endpoint
                 resp = httpx.post(f"{api_url}/orchestrator/reject", json={"feedback": feedback}, timeout=10)
-                st.warning("Match rejected. Orchestrator will look for alternatives.")
-                del st.session_state['current_state']
+                if resp.status_code == 200:
+                    st.warning("Match rejected. Re-running P4/P5 on latest artifacts...")
+                    m = httpx.post(f"{api_url}/match/run", timeout=30)
+                    r = httpx.post(f"{api_url}/rank/run", params={"top_n": 3}, timeout=30)
+                    st.session_state.pop('current_state', None)
+                    if m.status_code == 200 and r.status_code == 200:
+                        st.success("Re-run complete. Click 'Refresh from Latest Match' to review updated state.")
+                    else:
+                        st.error(f"Re-run issues: match={m.status_code}, rank={r.status_code}")
+                else:
+                    st.error(f"Reject failed: {resp.text}")
             except Exception as e:
                 st.error(f"Connection error: {e}")
 
 
 
 # --- P17 GROUNDED EVIDENCE SECTION ---
-st.header("Step 3: Grounded Evidence Analysis")
+st.header("P17 — Grounded Evidence Analysis")
+st.caption("You can either reuse P2/P3 text or paste dedicated inputs below.")
+
+p17_resume_text = st.text_area("P17 Resume Text (optional override)", value="", height=140)
+p17_job_text = st.text_area("P17 Job Description Text (optional override)", value="", height=140)
 
 if st.button("Run P17 Grounding Analysis"):
-    if not resume_text.strip() or not job_text.strip():
-        st.error("Please fill both Resume Text and Job Description fields from P2/P3 sections first.")
+    resume_input = p17_resume_text.strip() or resume_text.strip()
+    job_input = p17_job_text.strip() or job_text.strip()
+
+    if not resume_input or not job_input:
+        st.error("Please provide resume and job description text (either in P2/P3 or in the P17 override boxes).")
     else:
-        payload = {"resume_text": resume_text, "job_text": job_text, "candidate_name": candidate or None}
+        payload = {"resume_text": resume_input, "job_text": job_input, "candidate_name": candidate or None}
         try:
             resp = requests.post(f"{api_url}/p17/grounding", json=payload, timeout=60)
             if resp.status_code == 200:
