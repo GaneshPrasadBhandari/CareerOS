@@ -33,3 +33,21 @@ async def approve_match(payload: dict):
         json.dump(data, f, indent=4)
 
     return {"status": "approved"}
+
+@router.post("/orchestrator/reject")
+async def reject_match(payload: dict):
+    """Marks current state as rejected so reranking can continue."""
+    if not os.path.exists(STATE_FILE):
+        raise HTTPException(status_code=404, detail="State file missing")
+
+    with open(STATE_FILE, "r") as f:
+        data = json.load(f)
+
+    data["is_approved"] = False
+    data["is_rejected"] = True
+    data["rejection_feedback"] = payload.get("feedback", "")
+
+    with open(STATE_FILE, "w") as f:
+        json.dump(data, f, indent=4)
+
+    return {"status": "rejected"}
