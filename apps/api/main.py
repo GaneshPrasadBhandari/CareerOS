@@ -154,8 +154,10 @@ async def handle_unexpected_error(request: Request, exc: Exception):
 # Small helpers
 # ------------------------------------------------------------------------------
 def latest_file(pattern: str) -> Optional[str]:
-    files = sorted(glob.glob(pattern))
-    return files[-1] if files else None
+    files = glob.glob(pattern)
+    if not files:
+        return None
+    return str(max(files, key=lambda f: Path(f).stat().st_mtime))
 
 
 # ------------------------------------------------------------------------------
@@ -303,7 +305,7 @@ def run_ranking(top_n: int = 3):
 def generate_package():
     run_id = new_run_id()
 
-    shortlist_fp = latest_file("outputs/ranking/shortlist_v1_*.json")
+    shortlist_fp = latest_file("outputs/ranking/shortlist_*.json") or latest_file("outputs/ranking/shortlist_v1_*.json")
     if not shortlist_fp:
         return {"status": "error", "message": "No shortlist found. Run P5 ranking first.", "run_id": run_id}
 

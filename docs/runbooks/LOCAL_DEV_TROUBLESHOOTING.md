@@ -96,3 +96,14 @@ PYTHONPATH=src streamlit run apps/ui/Home.py --server.address 0.0.0.0 --server.p
 - `Refresh from Latest Match`: rebuilds approval state from newest match artifact.
 - `Reset Approval State`: clears stale `outputs/state/current_run.json`.
 - `Reject & Re-Run Match/Rank`: rejects and automatically triggers P4 + P5 on latest artifacts.
+
+
+## 9) Logs file location
+If `tail -n 100 logs/careeros.log` fails, use:
+
+```bash
+ls logs
+tail -n 100 logs/careeros.jsonl
+```
+
+Current app logging writes JSON lines to `logs/careeros.jsonl`.
