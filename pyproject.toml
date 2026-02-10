@@ -29,7 +29,9 @@ dependencies = [
   "dvc[s3]>=3.0.0",        # Data versioning
   "twilio>=9.0.0",         # SMS alerts
   "mcp>=1.0.0",            # Model Context Protocol
-  "google-search-results"  # Google Serper API
+  "google-search-results",  # Google Serper API
+  "python-docx>=1.2.0",
+  "reportlab>=4.4.0"
 ]
 
 [project.optional-dependencies]
