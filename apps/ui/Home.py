@@ -2,6 +2,13 @@ import streamlit as st
 import httpx
 import requests
 import pandas as pd
+import sys
+from pathlib import Path
+
+ROOT_DIR = Path(__file__).resolve().parents[2]
+SRC_DIR = ROOT_DIR / "src"
+if str(SRC_DIR) not in sys.path:
+    sys.path.insert(0, str(SRC_DIR))
 # Add this near the top of Home.py
 resume_text = ""
 job_desc = ""
@@ -28,6 +35,23 @@ if st.button("Check API Version", key="btn_version"):
         st.json(r.json())
     except Exception as e:
         st.error(f"API not reachable: {e}")
+
+with st.expander("Pipeline Progress (P1-P19)", expanded=False):
+    if st.button("Refresh P1-P19 Status", key="btn_phases_refresh"):
+        try:
+            r = httpx.get(f"{api_url}/phases/status", timeout=10)
+            st.json(r.json())
+        except Exception as e:
+            st.error(f"Failed to load phases: {e}")
+
+
+if st.button("Check Phase Coverage (P1-P19)", key="btn_phases"):
+    try:
+        r = httpx.get(f"{api_url}/phases/status", timeout=10)
+        data = r.json()
+        st.json(data)
+    except Exception as e:
+        st.error(f"Failed to load phases: {e}")
 
 
 
@@ -475,9 +499,9 @@ if st.button("Run Orchestrator"):
 st.header("P15 — Human Approval Gate (L5)")
 
 # 1. Fetch the pending state from the backend
-if st.button("Check for Pending Approvals"):
+col_p15_a, col_p15_b, col_p15_c = st.columns(3)
+if col_p15_a.button("Check for Pending Approvals"):
     try:
-        # Calls the GET route we implemented in src/api/routes/orchestrator.py
         r = httpx.get(f"{api_url}/orchestrator/current_state", timeout=10)
         if r.status_code == 200:
             state_data = r.json()
@@ -493,6 +517,30 @@ if st.button("Check for Pending Approvals"):
     except Exception as e:
         st.error(f"Error fetching state: {e}")
 
+if col_p15_b.button("Refresh from Latest Match"):
+    try:
+        r = httpx.get(f"{api_url}/orchestrator/current_state", params={"refresh": True}, timeout=10)
+        if r.status_code == 200:
+            st.session_state['current_state'] = r.json()
+            st.success("State refreshed from latest match artifact.")
+            st.json(r.json())
+        else:
+            st.error(r.text)
+    except Exception as e:
+        st.error(f"Refresh failed: {e}")
+
+if col_p15_c.button("Reset Approval State"):
+    try:
+        r = httpx.post(f"{api_url}/orchestrator/reset", timeout=10)
+        if r.status_code == 200:
+            st.session_state.pop('current_state', None)
+            st.success("State reset. Run matching/ranking again if needed.")
+        else:
+            st.error(r.text)
+    except Exception as e:
+        st.error(f"Reset failed: {e}")
+
+
 # 2. Display UI if a valid state is stored in session_state
 if 'current_state' in st.session_state:
     cs = st.session_state['current_state']
@@ -501,8 +549,14 @@ if 'current_state' in st.session_state:
         st.subheader(f"Review Match: {cs.get('top_match_id', 'Unknown ID')}")
         
         # Format the score as a percentage for readability
-        score = cs.get('match_score', 0)
-        st.metric("AI Match Score", f"{score*100:.1f}%")
+        score_raw = cs.get('match_score', 0)
+        try:
+            score_val = float(score_raw)
+        except Exception:
+            score_val = 0.0
+        score_pct = score_val if score_val > 1.0 else score_val * 100.0
+        st.metric("AI Match Score", f"{score_pct:.1f}%")
+        st.caption(f"Overlap skills: {', '.join(cs.get('overlap_skills', [])[:10]) or 'n/a'}")
         
         feedback = st.text_area(
             "Feedback for Creator Agent", 
@@ -528,47 +582,88 @@ if 'current_state' in st.session_state:
                 st.error(f"Connection error: {e}")
             
         # Reject Logic
-        if col_rej.button("❌ Reject & Re-Rank", use_container_width=True):
+        if col_rej.button("❌ Reject & Re-Run Match/Rank", use_container_width=True):
             try:
-                # Assuming you have or will add a /reject endpoint
                 resp = httpx.post(f"{api_url}/orchestrator/reject", json={"feedback": feedback}, timeout=10)
-                st.warning("Match rejected. Orchestrator will look for alternatives.")
-                del st.session_state['current_state']
+                if resp.status_code == 200:
+                    st.warning("Match rejected. Re-running P4/P5 on latest artifacts...")
+                    m = httpx.post(f"{api_url}/match/run", timeout=30)
+                    r = httpx.post(f"{api_url}/rank/run", params={"top_n": 3}, timeout=30)
+                    st.session_state.pop('current_state', None)
+                    if m.status_code == 200 and r.status_code == 200:
+                        st.success("Re-run complete. Click 'Refresh from Latest Match' to review updated state.")
+                    else:
+                        st.error(f"Re-run issues: match={m.status_code}, rank={r.status_code}")
+                else:
+                    st.error(f"Reject failed: {resp.text}")
             except Exception as e:
                 st.error(f"Connection error: {e}")
 
 
 
 # --- P17 GROUNDED EVIDENCE SECTION ---
-st.header("Step 3: Grounded Evidence Analysis")
+st.header("P17 — Grounded Evidence Analysis")
+st.caption("You can either reuse P2/P3 text or paste dedicated inputs below.")
+
+p17_resume_text = st.text_area("P17 Resume Text (optional override)", value="", height=140)
+p17_job_text = st.text_area("P17 Job Description Text (optional override)", value="", height=140)
 
 if st.button("Run P17 Grounding Analysis"):
-    from careeros.evidence.service import retrieve_chunks_for_skills
-    from careeros.parsing.schema import EvidenceProfile
+    resume_input = p17_resume_text.strip() or resume_text.strip()
+    job_input = p17_job_text.strip() or job_text.strip()
 
-    # FIX: Ensure these match the variables created by your st.text_area widgets!
-    # If your text area is 'job_desc', change 'job_description' to 'job_desc'
-    r_text = resume_text if 'resume_text' in locals() else ""
-    j_text = job_description if 'job_description' in locals() else ""
-
-    # If the above line still fails, check if your variable is named 'job_desc'
-    # and change it to: j_text = job_desc
-
-    resume_skills = [s.strip() for s in r_text.split(",") if s.strip()]
-    job_skills = [s.strip() for s in j_text.split(",") if s.strip()]
-
-    if not resume_skills or not job_skills:
-        st.error("Please ensure both Resume and Job Description fields have comma-separated skills.")
+    if not resume_input or not job_input:
+        st.error("Please provide resume and job description text (either in P2/P3 or in the P17 override boxes).")
     else:
-        profile = EvidenceProfile(skills=resume_skills)
-        result = retrieve_chunks_for_skills(profile, job_skills)
+        payload = {"resume_text": resume_input, "job_text": job_input, "candidate_name": candidate or None}
+        try:
+            resp = requests.post(f"{api_url}/p17/grounding", json=payload, timeout=60)
+            if resp.status_code == 200:
+                data = resp.json()
+                st.success("P17 grounded package generated")
+                st.json(
+                    {
+                        "path": data.get("path"),
+                        "required_skills": data.get("required_skills", []),
+                        "chunks": len(data.get("retrieved_chunks", [])),
+                        "citations_complete": (data.get("package") or {}).get("citations_complete"),
+                    }
+                )
+            else:
+                st.error(resp.text)
+        except Exception as e:
+            st.error(f"P17 request failed: {e}")
 
-        if result.chunks:
-            st.success(f"Verified {len(result.chunks)} matches found in your profile.")
-            for chunk in result.chunks:
-                with st.expander(f"📍 Evidence ID: {chunk.chunk_id}"):
-                    st.write(f"**Verification Statement:** {chunk.text}")
-                    st.write(f"**Source:** {chunk.source}")
-                    st.write(f"**Metadata Tags:** `{chunk.tags}`")
+
+# --- P18 GUARDRIALS V2 SECTION ---
+st.header("P18 — Guardrails v2 (Citation Enforcement)")
+
+p18_package_path = st.text_input("P18 package_path (optional, auto latest v2)", value="")
+if st.button("Run P18 Guardrails v2"):
+    try:
+        resp = requests.post(f"{api_url}/p18/guardrails_v2", json={"package_path": p18_package_path.strip() or None}, timeout=30)
+        if resp.status_code == 200:
+            st.json(resp.json())
         else:
-            st.warning("No direct matches found. The AI will need to 'infer' matches in the next step.")
+            st.error(resp.text)
+    except Exception as e:
+        st.error(f"P18 request failed: {e}")
+
+
+# --- P19 GLOBAL STATE SECTION ---
+st.header("P19 — Typed Global State (Agentic Prep)")
+
+p19_mode = st.selectbox("P19 mode", ["agentic", "deterministic"], index=0)
+if st.button("Create New P19 State"):
+    try:
+        resp = requests.post(f"{api_url}/p19/state/new", json={"mode": p19_mode}, timeout=20)
+        st.json(resp.json())
+    except Exception as e:
+        st.error(f"P19 create failed: {e}")
+
+if st.button("Load Latest P19 State"):
+    try:
+        resp = requests.get(f"{api_url}/p19/state/latest", timeout=20)
+        st.json(resp.json())
+    except Exception as e:
+        st.error(f"P19 load failed: {e}")
