@@ -525,8 +525,13 @@ if 'current_state' in st.session_state:
         st.subheader(f"Review Match: {cs.get('top_match_id', 'Unknown ID')}")
         
         # Format the score as a percentage for readability
-        score = cs.get('match_score', 0)
-        st.metric("AI Match Score", f"{score*100:.1f}%")
+        score_raw = cs.get('match_score', 0)
+        try:
+            score_val = float(score_raw)
+        except Exception:
+            score_val = 0.0
+        score_pct = score_val if score_val > 1.0 else score_val * 100.0
+        st.metric("AI Match Score", f"{score_pct:.1f}%")
         
         feedback = st.text_area(
             "Feedback for Creator Agent", 
