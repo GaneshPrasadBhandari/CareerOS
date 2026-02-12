@@ -94,6 +94,9 @@ from careeros.generation.service import build_grounded_package_v2, write_applica
 #p15
 from apps.api.routes import orchestrator
 
+from careeros.phase3.contracts import AgentTaskInput
+from careeros.phase3.service import validate_contract, dry_run_agent_step, PHASE3_STEPS
+
 
 # ------------------------------------------------------------------------------
 # App boot
@@ -662,19 +665,61 @@ def p19_state_latest():
     return {"status": "ok", "path": state_fp, "state": OrchestratorState.model_validate_json(raw).model_dump()}
 
 
+
+
+@app.get("/phase3/readiness")
+def phase3_readiness():
+    """Return Phase 3 readiness summary and key-presence checks (boolean only)."""
+    return {
+        "status": "ok",
+        "phase": "phase3_bootstrap",
+        "checks": {
+            "openai_api_key_present": bool(settings.openai_api_key),
+            "huggingface_api_key_present": bool(settings.huggingface_api_key),
+            "tavily_api_key_present": bool(settings.tavily_api_key),
+            "serper_api_key_present": bool(settings.serper_api_key),
+        },
+        "steps": PHASE3_STEPS,
+    }
+
+
+@app.post("/p20/contracts/validate")
+def p20_contracts_validate(payload: dict):
+    """P20: validate typed agent contracts before orchestration."""
+    result = validate_contract(payload)
+    return result.model_dump()
+
+
+@app.post("/p21/langgraph/dry_run")
+def p21_langgraph_dry_run(payload: dict):
+    """P21 bootstrap: run contract-validated dry-run and write phase3 artifact."""
+    validation = validate_contract(payload)
+    if validation.status != "ok":
+        return {"status": "error", "errors": validation.errors}
+
+    req = AgentTaskInput.model_validate(validation.normalized)
+    out = dry_run_agent_step(req)
+    return {"status": "ok", "result": out.model_dump()}
+
+
 @app.get("/phases/status")
 def phases_status():
     phase_status = {
         **{f"P{i}": "ready" for i in range(1, 18)},
         "P18": "ready",
         "P19": "ready",
+        "P20": "ready",
+        "P21": "planned",
+        "P22": "planned",
+        "P23": "planned",
+        "P24": "planned",
     }
     return {
         "status": "ok",
         "phases": [
             {"phase": p, "status": st, "available": st == "ready"} for p, st in phase_status.items()
         ],
-        "next_focus": "P20",
+        "next_focus": "P21",
     }
 
 

@@ -667,3 +667,39 @@ if st.button("Load Latest P19 State"):
         st.json(resp.json())
     except Exception as e:
         st.error(f"P19 load failed: {e}")
+
+
+# --- PHASE 3 KICKOFF ---
+st.header("Phase 3 Kickoff — Agentic + LLM Bootstrap")
+
+if st.button("Check Phase 3 Readiness"):
+    try:
+        r = requests.get(f"{api_url}/phase3/readiness", timeout=20)
+        st.json(r.json())
+    except Exception as e:
+        st.error(f"Readiness failed: {e}")
+
+st.subheader("P20 Contract Validation")
+p20_payload = st.text_area(
+    "P20 payload JSON",
+    value='{"run_id":"demo_run","agent":"planner","objective":"Plan matching and generation","constraints":{}}',
+    height=120,
+)
+if st.button("Run P20 Contract Validate"):
+    try:
+        import json as _json
+        payload = _json.loads(p20_payload)
+        r = requests.post(f"{api_url}/p20/contracts/validate", json=payload, timeout=20)
+        st.json(r.json())
+    except Exception as e:
+        st.error(f"P20 failed: {e}")
+
+st.subheader("P21 LangGraph Dry Run")
+if st.button("Run P21 Dry Run"):
+    try:
+        import json as _json
+        payload = _json.loads(p20_payload)
+        r = requests.post(f"{api_url}/p21/langgraph/dry_run", json=payload, timeout=20)
+        st.json(r.json())
+    except Exception as e:
+        st.error(f"P21 failed: {e}")
