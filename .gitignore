@@ -241,4 +241,12 @@ outputs/**
 # ===== CareerOS: Streamlit secrets/cache (do not commit) =====
 
 
+# ===== CareerOS local env variants (do not commit secrets) =====
+.env*
+!.env.example
 
+# ===== CareerOS generated export artifacts (do not commit) =====
+exports/packages/**
+exports/submissions/**
+!exports/**/.gitignore
+!exports/**/.gitkeep

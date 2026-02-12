@@ -1,12 +1,19 @@
 from __future__ import annotations
 
 import glob
+import sys
 from pathlib import Path
 from typing import Optional
 
 from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
+
+
+ROOT_DIR = Path(__file__).resolve().parents[2]
+SRC_DIR = ROOT_DIR / "src"
+if str(SRC_DIR) not in sys.path:
+    sys.path.insert(0, str(SRC_DIR))
 
 from careeros.core.settings import load_settings
 from careeros.core.logging import get_logger, new_run_id, log_event, log_exception
@@ -32,7 +39,8 @@ from careeros.ranking.schema import RankedShortlist
 
 # P6
 from careeros.generation.service import build_package, write_application_package
-from careeros.generation.schema import ApplicationPackage
+from careeros.generation.schema import ApplicationPackage, ApplicationPackageV2
+from careeros.guardrails.schema import ValidationFinding
 
 # P7
 from careeros.guardrails.service import validate_package_against_evidence, write_validation_report
@@ -79,11 +87,16 @@ from careeros.agentic.tools.spec import ToolSpec
 
 #P14 
 from careeros.agentic.p14_orchestrator import run_plan_p6_to_p11
-from pydantic import BaseModel
+from careeros.evidence.service import retrieve_chunks_for_skills
+from careeros.generation.service import build_grounded_package_v2, write_application_package_v2
 
 
 #p15
-from src.api.routes import orchestrator
+from apps.api.routes import orchestrator
+
+from careeros.phase3.contracts import AgentTaskInput
+from careeros.phase3.service import validate_contract, dry_run_agent_step, PHASE3_STEPS
+from careeros.phase3.langgraph_flow import run_langgraph_pipeline
 
 
 # ------------------------------------------------------------------------------
@@ -145,8 +158,10 @@ async def handle_unexpected_error(request: Request, exc: Exception):
 # Small helpers
 # ------------------------------------------------------------------------------
 def latest_file(pattern: str) -> Optional[str]:
-    files = sorted(glob.glob(pattern))
-    return files[-1] if files else None
+    files = glob.glob(pattern)
+    if not files:
+        return None
+    return str(max(files, key=lambda f: Path(f).stat().st_mtime))
 
 
 # ------------------------------------------------------------------------------
@@ -294,7 +309,7 @@ def run_ranking(top_n: int = 3):
 def generate_package():
     run_id = new_run_id()
 
-    shortlist_fp = latest_file("outputs/ranking/shortlist_v1_*.json")
+    shortlist_fp = latest_file("outputs/ranking/shortlist_*.json") or latest_file("outputs/ranking/shortlist_v1_*.json")
     if not shortlist_fp:
         return {"status": "error", "message": "No shortlist found. Run P5 ranking first.", "run_id": run_id}
 
@@ -541,6 +556,193 @@ def runs_execute_plan(req: P14RunRequest):
         stale_days=req.stale_days,
         tracking_path=req.tracking_path,
     )
+
+
+class P17GroundingRequest(BaseModel):
+    resume_text: str
+    job_text: str
+    candidate_name: str | None = None
+
+
+@app.post("/p17/grounding")
+def p17_grounding(req: P17GroundingRequest):
+    run_id = new_run_id()
+    profile = build_profile_from_text(req.resume_text, candidate_name=req.candidate_name)
+    job = build_jobpost_from_text(req.job_text)
+
+    required_skills = job.keywords or []
+    retrieval = retrieve_chunks_for_skills(profile, required_skills)
+
+    skill_to_chunk_ids: dict[str, list[str]] = {}
+    for c in retrieval.chunks:
+        for tag in c.tags:
+            skill_to_chunk_ids.setdefault(tag.lower(), []).append(c.chunk_id)
+
+    grounded_pkg: ApplicationPackageV2 = build_grounded_package_v2(
+        profile=profile,
+        job=job,
+        run_id=run_id,
+        profile_path="inline:resume_text",
+        job_path="inline:job_text",
+        overlap_skills=required_skills,
+        skill_to_chunk_ids=skill_to_chunk_ids,
+    )
+    out_path = write_application_package_v2(grounded_pkg)
+    return {
+        "status": "ok",
+        "run_id": run_id,
+        "path": str(out_path),
+        "required_skills": required_skills,
+        "retrieved_chunks": [c.model_dump() for c in retrieval.chunks],
+        "package": grounded_pkg.model_dump(),
+    }
+
+
+
+class P18ValidationRequest(BaseModel):
+    package_path: str | None = None
+
+
+@app.post("/p18/guardrails_v2")
+def p18_guardrails_v2(req: P18ValidationRequest):
+    run_id = new_run_id()
+    package_path = req.package_path or latest_file("exports/packages/application_package_v2_*.json")
+    if not package_path:
+        raise HTTPException(status_code=404, detail="No v2 package found. Run /p17/grounding first.")
+
+    pkg = ApplicationPackageV2.model_validate_json(Path(package_path).read_text(encoding="utf-8"))
+    missing_citations = [b.text for b in pkg.bullets if not b.evidence_chunk_ids]
+
+    status = "pass"
+    findings: list[ValidationFinding] = []
+    if pkg.citations_required and (not pkg.citations_complete or missing_citations):
+        status = "blocked"
+        findings.append(
+            ValidationFinding(
+                severity="block",
+                rule_id="GRV2_001",
+                message="Every generated bullet must include evidence_chunk_ids for P18.",
+                unsupported_terms=missing_citations[:5],
+                evidence_reference={"missing_bullets": len(missing_citations)},
+            )
+        )
+
+    report = {
+        "version": "v2",
+        "run_id": run_id,
+        "status": status,
+        "package_path": package_path,
+        "citations_required": pkg.citations_required,
+        "citations_complete": pkg.citations_complete,
+        "missing_citations_count": len(missing_citations),
+        "findings": [f.model_dump() for f in findings],
+    }
+    out_dir = Path("outputs/guardrails")
+    out_dir.mkdir(parents=True, exist_ok=True)
+    out_path = out_dir / f"validation_report_v2_{run_id}.json"
+    out_path.write_text(__import__("json").dumps(report, indent=2), encoding="utf-8")
+    report["path"] = str(out_path)
+    return report
+
+
+class P19StateRequest(BaseModel):
+    env: str | None = None
+    mode: str = "agentic"
+
+
+@app.post("/p19/state/new")
+def p19_state_new(req: P19StateRequest):
+    state = OrchestratorState.new(mode=req.mode, env=req.env or settings.env)
+    fp = write_state(state)
+    return {"status": "ok", "phase": "P19", "run_id": state.run_id, "state_path": str(fp), "state": state.model_dump()}
+
+
+@app.get("/p19/state/latest")
+def p19_state_latest():
+    state_fp = latest_file("outputs/runs/state_*.json")
+    if not state_fp:
+        return {"status": "idle", "message": "No P19 state yet. Run /p19/state/new."}
+    raw = Path(state_fp).read_text(encoding="utf-8")
+    return {"status": "ok", "path": state_fp, "state": OrchestratorState.model_validate_json(raw).model_dump()}
+
+
+
+
+@app.get("/phase3/readiness")
+def phase3_readiness():
+    """Return Phase 3 readiness summary and key-presence checks (boolean only)."""
+    return {
+        "status": "ok",
+        "phase": "phase3_bootstrap",
+        "checks": {
+            "openai_api_key_present": bool(settings.openai_api_key),
+            "huggingface_api_key_present": bool(settings.huggingface_api_key),
+            "tavily_api_key_present": bool(settings.tavily_api_key),
+            "serper_api_key_present": bool(settings.serper_api_key),
+        },
+        "steps": PHASE3_STEPS,
+    }
+
+
+@app.post("/p20/contracts/validate")
+def p20_contracts_validate(payload: dict):
+    """P20: validate typed agent contracts before orchestration."""
+    result = validate_contract(payload)
+    return result.model_dump()
+
+
+@app.post("/p21/langgraph/dry_run")
+def p21_langgraph_dry_run(payload: dict):
+    """P21 bootstrap: run contract-validated dry-run and write phase3 artifact."""
+    validation = validate_contract(payload)
+    if validation.status != "ok":
+        return {"status": "error", "errors": validation.errors}
+
+    req = AgentTaskInput.model_validate(validation.normalized)
+    out = dry_run_agent_step(req)
+    return {"status": "ok", "result": out.model_dump()}
+
+
+
+
+@app.post("/p21/langgraph/run")
+def p21_langgraph_run(payload: dict):
+    """P21 implementation: execute deterministic LangGraph node pipeline (match->rank->generate->guardrails)."""
+    run_id = str(payload.get("run_id") or new_run_id())
+    result = run_langgraph_pipeline(
+        run_id=run_id,
+        profile_path=payload.get("profile_path"),
+        job_path=payload.get("job_path"),
+        top_n=int(payload.get("top_n", 3)),
+    )
+    errors = result.get("errors") or []
+    return {
+        "status": "error" if errors else "ok",
+        "run_id": run_id,
+        "result": result,
+        "errors": errors,
+    }
+
+
+@app.get("/phases/status")
+def phases_status():
+    phase_status = {
+        **{f"P{i}": "ready" for i in range(1, 18)},
+        "P18": "ready",
+        "P19": "ready",
+        "P20": "ready",
+        "P21": "ready",
+        "P22": "planned",
+        "P23": "planned",
+        "P24": "planned",
+    }
+    return {
+        "status": "ok",
+        "phases": [
+            {"phase": p, "status": st, "available": st == "ready"} for p, st in phase_status.items()
+        ],
+        "next_focus": "P22",
+    }
 
 
 #p15
