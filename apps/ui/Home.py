@@ -703,3 +703,15 @@ if st.button("Run P21 Dry Run"):
         st.json(r.json())
     except Exception as e:
         st.error(f"P21 failed: {e}")
+
+
+if st.button("Run P21 Full Graph (Deterministic)"):
+    try:
+        import json as _json
+        payload = _json.loads(p20_payload)
+        payload.setdefault("top_n", 3)
+        r = requests.post(f"{api_url}/p21/langgraph/run", json=payload, timeout=60)
+        st.json(r.json())
+    except Exception as e:
+        st.error(f"P21 full run failed: {e}")
+

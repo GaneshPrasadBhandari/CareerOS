@@ -71,3 +71,13 @@ At bottom of Home page:
 - Keeps P1→P19 stable and demo-safe.
 - Adds Phase 3 incrementally with typed contracts.
 - Defers live external tool execution until contract + safety gates are validated.
+
+
+## 8) P21 full deterministic graph run
+```bash
+curl -s -X POST http://127.0.0.1:8000/p21/langgraph/run \
+  -H 'Content-Type: application/json' \
+  -d '{"run_id":"demo_run","top_n":3}' | jq
+```
+
+This runs load->match->rank->generate->guardrails in one graph call.
