@@ -106,6 +106,7 @@ from careeros.phase3.next_steps import (
     parser_extract,
     vision_ocr,
     connector_ingest,
+    p25_automation_run,
 )
 from careeros.phase3.evaluator_v2 import evaluate_run_v2, latest_eval_v2, EvalWeights
 from careeros.phase3.system_checks import run_system_health_checks
@@ -806,6 +807,12 @@ def p24_evaluator_run_v2(payload: dict):
 def p24_evaluator_latest(run_id: str):
     return latest_eval_v2(run_id)
 
+
+
+
+@app.post("/p25/automation/run")
+def p25_automation_run_endpoint(payload: dict):
+    return p25_automation_run(payload)
 
 @app.get("/p25/system/health")
 def p25_system_health():

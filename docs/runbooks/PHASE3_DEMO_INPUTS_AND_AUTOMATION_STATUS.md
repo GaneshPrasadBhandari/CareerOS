@@ -154,3 +154,54 @@ python scripts/plot_phase3_flow.py
 ```
 
 This checks route availability and writes diagrams under `outputs/phase3/`.
+
+
+
+## 9) P25 full automation API demo (resume parser + jobs + ranking + package + guardrails + LLM summary)
+
+```bash
+curl -s -X POST http://127.0.0.1:8000/p25/automation/run   -H 'Content-Type: application/json'   -d "$(python - <<'PYJSON'
+import json
+from pathlib import Path
+resume = Path('data/demo/resume_sample_backend_ml.txt').read_text(encoding='utf-8')
+job = Path('data/demo/job_description_ml_platform.txt').read_text(encoding='utf-8')
+payload = {
+  'run_id': 'demo_p25_auto',
+  'candidate_name': 'Riya Patel',
+  'top_n': 3,
+  'resume': {'source_type': 'inline', 'text': resume},
+  'jobs': {'job_texts': [job]}
+}
+print(json.dumps(payload))
+PYJSON
+)" | jq
+```
+
+Expected response sections:
+
+- `parser`: resume parsing outcome (skills, section hits, parser artifact path)
+- `connector`: job connector summary (urls attempted/errors)
+- `paths`: profile/job/match/shortlist/package/validation artifact paths
+- `metrics`: `match_score`, `jobs_ingested`, `guardrails_status`
+- `llm_summary`: Ollama-based summary (or `degraded` if Ollama is not running)
+
+---
+
+## 10) Streamlit UI test flow (all major steps)
+
+1. Start API: `scripts/run_phase2_app.sh api`
+2. Start UI: `scripts/run_phase2_app.sh ui`
+3. In UI:
+   - set API URL = `http://127.0.0.1:8000`
+   - click **Check API Health**
+   - L1: fill intake values and click **Create Intake Bundle**
+   - L2: paste `data/demo/resume_sample_backend_ml.txt` and click **Build Profile**
+   - L3: paste `data/demo/job_description_ml_platform.txt` and click **Ingest Job Post**
+   - L4: click **Run Matching**
+   - L5: click **Run Ranking**
+   - L6: click **Generate Application Package**
+   - L7: click **Validate Latest Package**
+   - Phase3: call `/p21/langgraph/run`, `/p24/evaluator/run_v2`, `/p25/system/health` from API/terminal
+
+Tip: if UI shows `Connection refused`, your API process is not running on `:8000`.
+
