@@ -75,8 +75,42 @@ else
   echo "If body says Not Found, restart API after pulling latest branch."
 fi
 
-printf "\n[8/8] Next commands\n"
+printf "
+[8/10] Visualization dependencies
+"
+if command -v dot >/dev/null 2>&1; then
+  echo "OK: graphviz 'dot' found (PNG rendering available)"
+else
+  echo "WARN: graphviz 'dot' not found (PNG rendering skipped)"
+  echo "Install (macOS): brew install graphviz"
+  echo "Install (Ubuntu): sudo apt-get install -y graphviz"
+fi
+
+if python - <<'PYCHK' >/dev/null 2>&1
+import importlib.util
+raise SystemExit(0 if importlib.util.find_spec('reportlab') else 1)
+PYCHK
+then
+  echo "OK: reportlab found (PDF rendering available)"
+else
+  echo "WARN: reportlab not found (PDF summary skipped)"
+  echo "Install: pip install reportlab"
+fi
+
+printf "
+[9/10] Generate architecture visuals
+"
+if [[ -f scripts/plot_phase3_flow.py ]]; then
+  python scripts/plot_phase3_flow.py || true
+else
+  echo "WARN: scripts/plot_phase3_flow.py not present in this checkout"
+fi
+
+printf "
+[10/10] Next commands
+"
 cat <<'CMDS'
+
 # Sync to latest phase3-dev
 git fetch origin --prune
 git checkout phase3-dev

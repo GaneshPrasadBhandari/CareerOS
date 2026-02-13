@@ -220,3 +220,33 @@ Use:
 ```bash
 pytest -q tests/unit tests/integration
 ```
+
+
+## 15) Visualization prerequisites (PNG/PDF)
+
+To generate all visualization artifacts from `scripts/plot_phase3_flow.py`:
+
+- PNG files require Graphviz `dot`
+- PDF summary requires `reportlab`
+
+Install commands:
+
+```bash
+# macOS
+brew install graphviz
+pip install reportlab
+
+# Ubuntu/Debian
+sudo apt-get update && sudo apt-get install -y graphviz
+pip install reportlab
+```
+
+Then run:
+
+```bash
+python scripts/plot_phase3_flow.py
+ls outputs/phase3 | rg 'phase3_(flow|agents|layers|architecture_map)'
+```
+
+If `dot` is missing, `.mmd`/`.dot` are still generated.
+If `reportlab` is missing, PDF is skipped with a warning message.
