@@ -115,3 +115,19 @@ Then restart API process and re-run curl.
 - **Agentic now**: orchestration graph structure exists (LangGraph path; deterministic fallback path also supported).
 - **LLM usage now**: limited/controlled; architecture supports LLM-backed generation, with stronger expansion in P22+.
 - **Human-in-loop**: final sensitive actions remain manual until P22 approval nodes are implemented.
+
+
+## G) Free-source policy for models (no paid OpenAI)
+
+For upcoming implementations, default model/tool policy is:
+- local/open models first (Ollama, Hugging Face open models)
+- deterministic logic where possible
+- human approval for sensitive actions
+
+Recommended default stack:
+- LLM: `llama3.1:8b-instruct` / `mistral:7b-instruct` via Ollama
+- Embeddings: `sentence-transformers/all-MiniLM-L6-v2`
+- OCR: `tesseract` (optional `easyocr`)
+
+See detailed execution plan in:
+- `docs/runbooks/P24_EVALUATOR_V2_AND_P25_FREE_STACK_PLAN.md`
