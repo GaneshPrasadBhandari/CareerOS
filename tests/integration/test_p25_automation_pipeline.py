@@ -38,4 +38,12 @@ def test_p25_automation_pipeline_with_demo_texts():
     assert Path(paths["package_path"]).exists()
     assert Path(paths["validation_report_path"]).exists()
 
+
+    package_json = Path(paths["package_path"]).read_text(encoding="utf-8")
+    assert package_json
+    import json as _json
+    pkg = _json.loads(package_json)
+    assert len(pkg.get("bullets", [])) >= 5
+    assert len(pkg.get("cover_letter", {}).get("paragraphs", [])) >= 4
+
     assert body["llm_summary"]["status"] in {"ok", "degraded"}

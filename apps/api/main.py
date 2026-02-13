@@ -5,7 +5,7 @@ import sys
 from pathlib import Path
 from typing import Optional
 
-from fastapi import FastAPI, HTTPException, Query, Request
+from fastapi import FastAPI, HTTPException, Query, Request, UploadFile, File, Form
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
@@ -177,6 +177,30 @@ def latest_file(pattern: str) -> Optional[str]:
     return str(max(files, key=lambda f: Path(f).stat().st_mtime))
 
 
+def _extract_upload_text(upload: UploadFile) -> str:
+    name = (upload.filename or "").lower()
+    raw = upload.file.read()
+
+    if name.endswith(".pdf"):
+        from pypdf import PdfReader
+        import io
+
+        reader = PdfReader(io.BytesIO(raw))
+        return "\n".join((p.extract_text() or "") for p in reader.pages).strip()
+
+    if name.endswith(".docx"):
+        from docx import Document
+        import tempfile
+
+        with tempfile.NamedTemporaryFile(suffix=".docx") as tmp:
+            tmp.write(raw)
+            tmp.flush()
+            doc = Document(tmp.name)
+            return "\n".join(par.text for par in doc.paragraphs).strip()
+
+    return raw.decode("utf-8", errors="ignore").strip()
+
+
 # ------------------------------------------------------------------------------
 # Base endpoints
 # ------------------------------------------------------------------------------
@@ -292,7 +316,7 @@ def run_match():
 # P5 — Ranking
 # ------------------------------------------------------------------------------
 @app.post("/rank/run")
-def run_ranking(top_n: int = 3):
+def run_ranking(top_n: int = 3, recent_jobs: int = 20):
     run_id = new_run_id()
 
     profile_fp = latest_file("outputs/profile/profile_v1_*.json")
@@ -300,7 +324,16 @@ def run_ranking(top_n: int = 3):
         return {"status": "error", "message": "No profile artifacts found. Run P2 first.", "run_id": run_id}
 
     try:
-        shortlist = rank_all_jobs(profile_path=profile_fp, top_n=top_n, run_id=run_id)
+        job_files = sorted(glob.glob("outputs/jobs/job_post_v1_*.json"))
+        if recent_jobs > 0 and len(job_files) > recent_jobs:
+            job_files = job_files[-recent_jobs:]
+
+        shortlist = rank_all_jobs(
+            profile_path=profile_fp,
+            top_n=top_n,
+            run_id=run_id,
+            job_paths=job_files,
+        )
         out_path = write_shortlist(shortlist)
         log_event(logger, "ranking_completed", run_id, top_n=top_n, path=str(out_path))
         return {
@@ -809,6 +842,27 @@ def p24_evaluator_latest(run_id: str):
 
 
 
+
+
+
+@app.post("/p25/automation/run_upload")
+def p25_automation_run_upload(
+    resume_file: UploadFile = File(...),
+    job_file: UploadFile = File(...),
+    candidate_name: str | None = Form(default=None),
+    run_id: str | None = Form(default=None),
+    top_n: int = Form(default=3),
+):
+    resume_text = _extract_upload_text(resume_file)
+    job_text = _extract_upload_text(job_file)
+    payload = {
+        "run_id": run_id,
+        "candidate_name": candidate_name,
+        "top_n": top_n,
+        "resume": {"source_type": "inline", "text": resume_text},
+        "jobs": {"job_texts": [job_text]},
+    }
+    return p25_automation_run(payload)
 
 @app.post("/p25/automation/run")
 def p25_automation_run_endpoint(payload: dict):

@@ -309,7 +309,7 @@ def p25_automation_run(payload: dict[str, Any]) -> dict[str, Any]:
     match = compute_match(profile, job_model, run_id=run_id, profile_path=profile_path, job_path=first_job_path)
     match_path = str(write_match_result(match))
 
-    shortlist = rank_all_jobs(profile_path=profile_path, top_n=top_n, run_id=run_id)
+    shortlist = rank_all_jobs(profile_path=profile_path, top_n=top_n, run_id=run_id, job_paths=ingested_jobs)
     shortlist_path = str(write_shortlist(shortlist))
 
     top_item = shortlist.items[0]

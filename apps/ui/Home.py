@@ -730,3 +730,34 @@ if st.button("Run P21 Full Graph (Deterministic)"):
     except Exception as e:
         st.error(f"P21 full run failed: {e}")
 
+
+# --- P25 ONE-CLICK FILE AUTOMATION ---
+st.header("P25 — One-Click Automation (Upload Resume + Job File)")
+
+p25_candidate = st.text_input("P25 Candidate Name", value="Demo Candidate")
+p25_top_n = st.number_input("P25 Top N", min_value=1, max_value=10, value=3, step=1)
+resume_upload = st.file_uploader("Upload resume file (.txt/.pdf/.docx)", type=["txt", "pdf", "docx"], key="p25_resume_upload")
+job_upload = st.file_uploader("Upload job description file (.txt/.pdf/.docx)", type=["txt", "pdf", "docx"], key="p25_job_upload")
+
+if st.button("Run P25 Automation from Uploaded Files"):
+    if not resume_upload or not job_upload:
+        st.warning("Please upload both resume and job files.")
+    else:
+        try:
+            files = {
+                "resume_file": (resume_upload.name, resume_upload.getvalue(), resume_upload.type or "application/octet-stream"),
+                "job_file": (job_upload.name, job_upload.getvalue(), job_upload.type or "application/octet-stream"),
+            }
+            data = {
+                "candidate_name": p25_candidate,
+                "top_n": int(p25_top_n),
+            }
+            r = requests.post(f"{api_url}/p25/automation/run_upload", files=files, data=data, timeout=120)
+            if r.status_code == 200:
+                st.success("P25 automation completed")
+                st.json(r.json())
+            else:
+                st.error(f"P25 upload run failed ({r.status_code})")
+                st.write(r.text)
+        except Exception as e:
+            st.error(f"P25 upload run failed: {e}")

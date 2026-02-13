@@ -179,6 +179,20 @@ PYJSON
 
 Expected response sections:
 
+
+PDF/DOCX example (parser source_path mode):
+
+```bash
+curl -s -X POST http://127.0.0.1:8000/p25/automation/run \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "run_id":"demo_p25_pdf",
+    "candidate_name":"Demo User",
+    "resume":{"source_type":"pdf","source_path":"/absolute/path/to/resume.pdf"},
+    "jobs":{"job_texts":["Senior ML Engineer role requiring Python, FastAPI, SQL, Docker, LangGraph"]}
+  }' | jq
+```
+
 - `parser`: resume parsing outcome (skills, section hits, parser artifact path)
 - `connector`: job connector summary (urls attempted/errors)
 - `paths`: profile/job/match/shortlist/package/validation artifact paths
@@ -205,3 +219,49 @@ Expected response sections:
 
 Tip: if UI shows `Connection refused`, your API process is not running on `:8000`.
 
+
+
+
+## 11) Interpreting Uvicorn logs (what is right vs wrong)
+
+When you see lines like:
+
+- `POST /profile 200` with `skills: N` -> resume parsing worked and profile artifact was saved.
+- `POST /jobs/ingest 200` with `keywords: N` -> job parsing worked and job artifact was saved.
+- `POST /match/run 200` with `score: X` -> matching executed successfully.
+- `POST /rank/run 200` -> ranking succeeded (uses recent job artifacts by default from API query param).
+- `POST /generate/package 200` -> package generation succeeded and file is under `exports/packages/`.
+
+If you see `LangSmithError ... 403 /runs/multipart`, this is telemetry noise (not a pipeline failure).
+Use `scripts/run_phase2_app.sh api` to auto-disable tracing env vars in local runs.
+
+---
+
+## 12) Current automation reality (transparent status)
+
+Implemented now:
+- One-shot API automation: `POST /p25/automation/run` for parse -> ingest -> match -> rank -> package -> guardrails -> LLM summary.
+- Resume parser supports `inline/txt/pdf/docx` via parser agent.
+- Connector supports URL ingestion and converts HTML to plain text.
+- Optional Ollama summary generation (degrades gracefully if Ollama not running).
+
+Still next (planned):
+- Full automatic scraping from top-8 job portals with auth/compliance-safe connectors.
+- Native file-upload controls in Streamlit for PDF/DOCX (UI currently paste-first).
+- Stronger ATS templates and model-routed generation with local model selection policies.
+- Vector DB-backed retrieval/reranking integrated into the default P25 run path.
+
+
+
+## 13) New next-step implemented: file-upload automation (no manual paste)
+
+You can now run P25 using uploaded files directly:
+
+```bash
+curl -s -X POST http://127.0.0.1:8000/p25/automation/run_upload   -F candidate_name="Riya Patel"   -F top_n=3   -F resume_file=@data/demo/resume_sample_backend_ml.txt   -F job_file=@data/demo/job_description_ml_platform.txt | jq
+```
+
+UI support is also added in `Home.py` under:
+- **P25 — One-Click Automation (Upload Resume + Job File)**
+
+This removes the need to paste long text manually for the common demo path.
