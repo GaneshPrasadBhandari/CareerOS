@@ -107,6 +107,8 @@ from careeros.phase3.next_steps import (
     vision_ocr,
     connector_ingest,
 )
+from careeros.phase3.evaluator_v2 import evaluate_run_v2, latest_eval_v2, EvalWeights
+from careeros.phase3.system_checks import run_system_health_checks
 
 
 # ------------------------------------------------------------------------------
@@ -784,6 +786,31 @@ def agent_vision_ocr(payload: dict):
 def agent_connector_ingest(payload: dict):
     return connector_ingest(payload)
 
+
+
+@app.post("/p24/evaluator/run_v2")
+def p24_evaluator_run_v2(payload: dict):
+    run_id = str(payload.get("run_id") or new_run_id())
+    w = payload.get("weights") or {}
+    weights = EvalWeights(
+        match_quality=int(w.get("match_quality", 30)),
+        guardrails_quality=int(w.get("guardrails_quality", 25)),
+        approval_quality=int(w.get("approval_quality", 20)),
+        package_quality=int(w.get("package_quality", 15)),
+        pipeline_reliability=int(w.get("pipeline_reliability", 10)),
+    )
+    return evaluate_run_v2(run_id=run_id, weights=weights)
+
+
+@app.get("/p24/evaluator/latest")
+def p24_evaluator_latest(run_id: str):
+    return latest_eval_v2(run_id)
+
+
+@app.get("/p25/system/health")
+def p25_system_health():
+    return run_system_health_checks()
+
 @app.get("/phases/status")
 def phases_status():
     phase_status = {
@@ -795,13 +822,14 @@ def phases_status():
         "P22": "ready",
         "P23": "ready",
         "P24": "ready",
+        "P25": "planned",
     }
     return {
         "status": "ok",
         "phases": [
             {"phase": p, "status": st, "available": st == "ready"} for p, st in phase_status.items()
         ],
-        "next_focus": "P23",
+        "next_focus": "P25",
     }
 
 
