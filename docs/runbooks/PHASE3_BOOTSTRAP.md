@@ -274,5 +274,5 @@ scripts/run_phase2_app.sh api
 
 For ready-to-use resume/job sample data, API smoke payloads, output artifact locations, and a manual-vs-automated map across P1-P25 and L1-L9, see:
 
-- `docs/runbooks/PHASE3_DEMO_INPUTS_AND_AUTOMATION_STATUS.md`
+- `docs/runbooks/P25_AUTOMATION_EXECUTION_MASTER_GUIDE.md`
 

@@ -1,3 +1,4 @@
+import importlib.util
 from pathlib import Path
 
 from fastapi.testclient import TestClient
@@ -7,6 +8,14 @@ from apps.api.main import app
 
 def test_p25_automation_run_upload_txt_files():
     c = TestClient(app)
+
+    if importlib.util.find_spec("multipart") is None:
+        r = c.post("/p25/automation/run_upload")
+        assert r.status_code == 200
+        assert r.json()["status"] == "error"
+        assert "python-multipart" in r.json()["message"]
+        return
+
     resume_text = Path("data/demo/resume_sample_backend_ml.txt").read_text(encoding="utf-8")
     job_text = Path("data/demo/job_description_ml_platform.txt").read_text(encoding="utf-8")
 

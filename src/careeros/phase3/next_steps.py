@@ -267,6 +267,24 @@ def _ollama_summary(run_id: str, score: float) -> dict[str, Any]:
     return {"status": "degraded", "provider": "ollama", "text": "", "error": f"HTTP {r.status_code}"}
 
 
+
+
+def _write_p25_trace(run_id: str, trace: dict[str, Any]) -> str:
+    out_dir = Path("outputs/phase3/p25_runs")
+    out_dir.mkdir(parents=True, exist_ok=True)
+    fp = out_dir / f"p25_trace_{run_id}_{_stamp()}.json"
+    fp.write_text(json.dumps(trace, indent=2), encoding="utf-8")
+    return str(fp)
+
+
+def latest_p25_trace(run_id: str | None = None) -> dict[str, Any]:
+    pattern = f"outputs/phase3/p25_runs/p25_trace_{run_id}_*.json" if run_id else "outputs/phase3/p25_runs/p25_trace_*.json"
+    fp = _latest(pattern)
+    if not fp:
+        return {"status": "idle", "message": "No P25 trace artifact found"}
+    return {"status": "ok", "path": fp, "trace": json.loads(Path(fp).read_text(encoding="utf-8"))}
+
+
 def p25_automation_run(payload: dict[str, Any]) -> dict[str, Any]:
     run_id = str(payload.get("run_id") or f"p25_{_stamp()}")
     candidate_name = payload.get("candidate_name")
@@ -337,6 +355,55 @@ def p25_automation_run(payload: dict[str, Any]) -> dict[str, Any]:
 
     llm_summary = _ollama_summary(run_id=run_id, score=match.score)
 
+    trace = {
+        "run_id": run_id,
+        "layers": {
+            "L2_parsing": {
+                "agent": "parser",
+                "input": {"resume_source": (payload.get("resume") or {}).get("source_type", "inline")},
+                "output": {"profile_path": profile_path, "skills": profile.skills},
+                "next_layer": "L3_jobs",
+            },
+            "L3_jobs": {
+                "agent": "connector",
+                "input": {"job_text_count": len(jobs_payload.get("job_texts") or []), "urls": jobs_payload.get("urls", [])},
+                "output": {"jobs_ingested": len(ingested_jobs), "first_job_path": first_job_path},
+                "next_layer": "L4_matching",
+            },
+            "L4_matching": {
+                "agent": "matcher",
+                "input": {"profile_path": profile_path, "job_path": first_job_path},
+                "output": {"match_path": match_path, "match_score": match.score},
+                "next_layer": "L5_ranking",
+            },
+            "L5_ranking": {
+                "agent": "ranker",
+                "input": {"top_n": top_n},
+                "output": {"shortlist_path": shortlist_path, "ranked_items": len(shortlist.items)},
+                "next_layer": "L6_generation",
+            },
+            "L6_generation": {
+                "agent": "generator",
+                "input": {"top_job_path": top_job_path},
+                "output": {"package_path": package_path},
+                "next_layer": "L7_guardrails",
+            },
+            "L7_guardrails": {
+                "agent": "guardrails",
+                "input": {"package_path": package_path},
+                "output": {"validation_report_path": validation_path, "status": report.status},
+                "next_layer": "L8_summary",
+            },
+            "L8_summary": {
+                "agent": "llm_summary",
+                "input": {"provider": "ollama", "run_id": run_id},
+                "output": {"status": llm_summary.get("status", "degraded")},
+                "next_layer": "completed",
+            },
+        },
+    }
+    trace_path = _write_p25_trace(run_id, trace)
+
     return {
         "status": "ok",
         "run_id": run_id,
@@ -349,6 +416,7 @@ def p25_automation_run(payload: dict[str, Any]) -> dict[str, Any]:
             "shortlist_path": shortlist_path,
             "package_path": package_path,
             "validation_report_path": validation_path,
+            "trace_path": trace_path,
         },
         "metrics": {
             "match_score": match.score,
@@ -357,4 +425,5 @@ def p25_automation_run(payload: dict[str, Any]) -> dict[str, Any]:
             "jobs_ingested": len(ingested_jobs),
         },
         "llm_summary": llm_summary,
+        "trace": trace,
     }

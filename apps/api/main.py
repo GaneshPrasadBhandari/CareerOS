@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import glob
+import importlib.util
 import sys
 from pathlib import Path
 from typing import Optional
@@ -107,6 +108,7 @@ from careeros.phase3.next_steps import (
     vision_ocr,
     connector_ingest,
     p25_automation_run,
+    latest_p25_trace,
 )
 from careeros.phase3.evaluator_v2 import evaluate_run_v2, latest_eval_v2, EvalWeights
 from careeros.phase3.system_checks import run_system_health_checks
@@ -119,6 +121,8 @@ settings = load_settings()
 logger = get_logger()
 
 app = FastAPI(title="CareerOS API", version="0.1.0")
+
+_MULTIPART_AVAILABLE = importlib.util.find_spec("multipart") is not None
 
 
 # ------------------------------------------------------------------------------
@@ -845,28 +849,41 @@ def p24_evaluator_latest(run_id: str):
 
 
 
-@app.post("/p25/automation/run_upload")
-def p25_automation_run_upload(
-    resume_file: UploadFile = File(...),
-    job_file: UploadFile = File(...),
-    candidate_name: str | None = Form(default=None),
-    run_id: str | None = Form(default=None),
-    top_n: int = Form(default=3),
-):
-    resume_text = _extract_upload_text(resume_file)
-    job_text = _extract_upload_text(job_file)
-    payload = {
-        "run_id": run_id,
-        "candidate_name": candidate_name,
-        "top_n": top_n,
-        "resume": {"source_type": "inline", "text": resume_text},
-        "jobs": {"job_texts": [job_text]},
-    }
-    return p25_automation_run(payload)
+if _MULTIPART_AVAILABLE:
+    @app.post("/p25/automation/run_upload")
+    def p25_automation_run_upload(
+        resume_file: UploadFile = File(...),
+        job_file: UploadFile = File(...),
+        candidate_name: str | None = Form(default=None),
+        run_id: str | None = Form(default=None),
+        top_n: int = Form(default=3),
+    ):
+        resume_text = _extract_upload_text(resume_file)
+        job_text = _extract_upload_text(job_file)
+        payload = {
+            "run_id": run_id,
+            "candidate_name": candidate_name,
+            "top_n": top_n,
+            "resume": {"source_type": "inline", "text": resume_text},
+            "jobs": {"job_texts": [job_text]},
+        }
+        return p25_automation_run(payload)
+else:
+    @app.post("/p25/automation/run_upload")
+    def p25_automation_run_upload_unavailable():
+        return {
+            "status": "error",
+            "message": "python-multipart is not installed. Install with: pip install python-multipart",
+        }
 
 @app.post("/p25/automation/run")
 def p25_automation_run_endpoint(payload: dict):
     return p25_automation_run(payload)
+
+
+@app.get("/p25/automation/trace/latest")
+def p25_automation_trace_latest(run_id: str | None = None):
+    return latest_p25_trace(run_id)
 
 @app.get("/p25/system/health")
 def p25_system_health():
