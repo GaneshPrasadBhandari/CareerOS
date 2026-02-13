@@ -97,6 +97,16 @@ from apps.api.routes import orchestrator
 from careeros.phase3.contracts import AgentTaskInput
 from careeros.phase3.service import validate_contract, dry_run_agent_step, PHASE3_STEPS
 from careeros.phase3.langgraph_flow import run_langgraph_pipeline
+from careeros.phase3.next_steps import (
+    write_p22_approval_decision,
+    latest_p22_approval,
+    p23_memory_upsert,
+    p23_memory_get,
+    p24_evaluate_run,
+    parser_extract,
+    vision_ocr,
+    connector_ingest,
+)
 
 
 # ------------------------------------------------------------------------------
@@ -722,6 +732,58 @@ def p21_langgraph_run(payload: dict):
     }
 
 
+
+
+@app.post("/p22/approval/decision")
+def p22_approval_decision(payload: dict):
+    run_id = str(payload.get("run_id") or new_run_id())
+    approved = bool(payload.get("approved", False))
+    reviewer = str(payload.get("reviewer") or "human")
+    notes = payload.get("notes")
+    result = write_p22_approval_decision(run_id=run_id, approved=approved, reviewer=reviewer, notes=notes)
+    return {"status": "ok", "result": result}
+
+
+@app.get("/p22/approval/latest")
+def p22_approval_latest(run_id: str):
+    return latest_p22_approval(run_id)
+
+
+@app.post("/p23/memory/upsert")
+def p23_memory_upsert_endpoint(payload: dict):
+    return p23_memory_upsert(
+        run_id=str(payload.get("run_id") or new_run_id()),
+        namespace=str(payload.get("namespace") or "default"),
+        key=str(payload.get("key") or "entry"),
+        value=payload.get("value"),
+    )
+
+
+@app.get("/p23/memory/get")
+def p23_memory_get_endpoint(run_id: str, namespace: str, key: str):
+    return p23_memory_get(run_id=run_id, namespace=namespace, key=key)
+
+
+@app.post("/p24/evaluator/run")
+def p24_evaluator_run(payload: dict):
+    run_id = str(payload.get("run_id") or new_run_id())
+    return p24_evaluate_run(run_id)
+
+
+@app.post("/agents/parser/extract")
+def agent_parser_extract(payload: dict):
+    return parser_extract(payload)
+
+
+@app.post("/agents/vision/ocr")
+def agent_vision_ocr(payload: dict):
+    return vision_ocr(payload)
+
+
+@app.post("/agents/connector/ingest")
+def agent_connector_ingest(payload: dict):
+    return connector_ingest(payload)
+
 @app.get("/phases/status")
 def phases_status():
     phase_status = {
@@ -730,16 +792,16 @@ def phases_status():
         "P19": "ready",
         "P20": "ready",
         "P21": "ready",
-        "P22": "planned",
-        "P23": "planned",
-        "P24": "planned",
+        "P22": "ready",
+        "P23": "ready",
+        "P24": "ready",
     }
     return {
         "status": "ok",
         "phases": [
             {"phase": p, "status": st, "available": st == "ready"} for p, st in phase_status.items()
         ],
-        "next_focus": "P22",
+        "next_focus": "P23",
     }
 
 
