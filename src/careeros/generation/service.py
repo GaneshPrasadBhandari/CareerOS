@@ -11,35 +11,50 @@ from careeros.generation.schema import ApplicationPackage, ApplicationPackageV2,
 def _bullet_templates() -> List[str]:
     # Keep these “safe”: no fake metrics, no invented employers, no invented years.
     return [
-        "Designed and delivered production-ready AI/ML solutions using {skills}.",
-        "Built scalable APIs and workflows using {skills} to support real-world deployments.",
-        "Implemented MLOps practices for reproducibility and tracking using {skills}.",
-        "Developed GenAI/RAG capabilities with {skills} for grounded enterprise outputs.",
+        "Designed and delivered production-ready AI/ML solutions using {skills}, with clear ownership from design to rollout.",
+        "Built scalable APIs and workflow services using {skills}, emphasizing reliability, observability, and maintainability.",
+        "Implemented MLOps and evaluation practices using {skills} to improve reproducibility and deployment confidence.",
+        "Developed retrieval/GenAI capabilities with {skills} while applying guardrails and evidence-backed outputs.",
+        "Partnered cross-functionally to translate business requirements into shipped features using {skills}.",
     ]
 
 
 def generate_bullets(overlap_skills: List[str]) -> List[ResumeBullet]:
-    # Use up to 5 skills to keep bullets readable
-    skills = [s for s in overlap_skills][:5]
+    # Use up to 8 skills so ATS scanners see more direct keyword overlap.
+    skills = [s for s in overlap_skills][:8]
     skills_str = ", ".join(skills) if skills else "core engineering practices"
 
     bullets = []
-    for t in _bullet_templates()[:3]:
+    for t in _bullet_templates()[:5]:
         bullets.append(ResumeBullet(text=t.format(skills=skills_str), evidence_skills=skills))
     return bullets
 
 
 def generate_cover_letter(profile: EvidenceProfile, job: JobPost, overlap_skills: List[str]) -> CoverLetterDraft:
     role = job.title or "the role"
-    skills_str = ", ".join(overlap_skills[:6]) if overlap_skills else ", ".join(profile.skills[:6]) or "relevant skills"
+    company = job.company or "your team"
+    skills_str = ", ".join(overlap_skills[:8]) if overlap_skills else ", ".join(profile.skills[:8]) or "relevant skills"
 
     subject = f"Application for {role}"
 
-    p1 = f"Hello Hiring Team, I’m applying for {role}. My background aligns strongly with the role’s needs, particularly in {skills_str}."
-    p2 = "I focus on building production-grade systems: clean APIs, reliable pipelines, and measurable outcomes. I value traceability, safety, and governance in AI delivery."
-    p3 = "If helpful, I can share examples of end-to-end work covering design, implementation, testing, and deployment. Thank you for your time and consideration."
+    p1 = (
+        f"Dear Hiring Manager, I am excited to apply for {role} at {company}. "
+        f"My recent projects align with the role requirements, especially across {skills_str}."
+    )
+    p2 = (
+        "I bring a product-minded engineering approach: defining requirements clearly, implementing maintainable APIs and pipelines, "
+        "and validating quality with tests and guardrails before release."
+    )
+    p3 = (
+        "My experience includes end-to-end delivery across profile parsing, matching, ranking, and application generation workflows, "
+        "with attention to reliability, observability, and compliance constraints."
+    )
+    p4 = (
+        "I would welcome the opportunity to discuss how I can contribute quickly to your roadmap. "
+        "Thank you for your consideration."
+    )
 
-    return CoverLetterDraft(subject=subject, paragraphs=[p1, p2, p3])
+    return CoverLetterDraft(subject=subject, paragraphs=[p1, p2, p3, p4])
 
 
 def write_application_package(pkg: ApplicationPackage, out_dir: str = "exports/packages") -> Path:
@@ -78,7 +93,7 @@ def generate_grounded_bullets(overlap_skills: List[str], skill_to_chunk_ids: Dic
     skills_str = ", ".join(skills) if skills else "core engineering practices"
 
     bullets: List[ResumeBullet] = []
-    for t in _bullet_templates()[:3]:
+    for t in _bullet_templates()[:5]:
         cited_chunk_ids: List[str] = []
         for s in skills:
             cited_chunk_ids.extend(skill_to_chunk_ids.get(s.lower(), []))

@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 import glob
+import importlib.util
 import sys
 from pathlib import Path
 from typing import Optional
 
-from fastapi import FastAPI, HTTPException, Query, Request
+from fastapi import FastAPI, HTTPException, Query, Request, UploadFile, File, Form
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
@@ -96,10 +97,21 @@ from apps.api.routes import orchestrator
 
 from careeros.phase3.contracts import AgentTaskInput
 from careeros.phase3.service import validate_contract, dry_run_agent_step, PHASE3_STEPS
-<<<<<<< codex/analyze-and-fix-issues-in-main.py-and-home.py
 from careeros.phase3.langgraph_flow import run_langgraph_pipeline
-=======
->>>>>>> main
+from careeros.phase3.next_steps import (
+    write_p22_approval_decision,
+    latest_p22_approval,
+    p23_memory_upsert,
+    p23_memory_get,
+    p24_evaluate_run,
+    parser_extract,
+    vision_ocr,
+    connector_ingest,
+    p25_automation_run,
+    latest_p25_trace,
+)
+from careeros.phase3.evaluator_v2 import evaluate_run_v2, latest_eval_v2, EvalWeights
+from careeros.phase3.system_checks import run_system_health_checks
 
 
 # ------------------------------------------------------------------------------
@@ -109,6 +121,8 @@ settings = load_settings()
 logger = get_logger()
 
 app = FastAPI(title="CareerOS API", version="0.1.0")
+
+_MULTIPART_AVAILABLE = importlib.util.find_spec("multipart") is not None
 
 
 # ------------------------------------------------------------------------------
@@ -165,6 +179,30 @@ def latest_file(pattern: str) -> Optional[str]:
     if not files:
         return None
     return str(max(files, key=lambda f: Path(f).stat().st_mtime))
+
+
+def _extract_upload_text(upload: UploadFile) -> str:
+    name = (upload.filename or "").lower()
+    raw = upload.file.read()
+
+    if name.endswith(".pdf"):
+        from pypdf import PdfReader
+        import io
+
+        reader = PdfReader(io.BytesIO(raw))
+        return "\n".join((p.extract_text() or "") for p in reader.pages).strip()
+
+    if name.endswith(".docx"):
+        from docx import Document
+        import tempfile
+
+        with tempfile.NamedTemporaryFile(suffix=".docx") as tmp:
+            tmp.write(raw)
+            tmp.flush()
+            doc = Document(tmp.name)
+            return "\n".join(par.text for par in doc.paragraphs).strip()
+
+    return raw.decode("utf-8", errors="ignore").strip()
 
 
 # ------------------------------------------------------------------------------
@@ -282,7 +320,7 @@ def run_match():
 # P5 — Ranking
 # ------------------------------------------------------------------------------
 @app.post("/rank/run")
-def run_ranking(top_n: int = 3):
+def run_ranking(top_n: int = 3, recent_jobs: int = 20):
     run_id = new_run_id()
 
     profile_fp = latest_file("outputs/profile/profile_v1_*.json")
@@ -290,7 +328,16 @@ def run_ranking(top_n: int = 3):
         return {"status": "error", "message": "No profile artifacts found. Run P2 first.", "run_id": run_id}
 
     try:
-        shortlist = rank_all_jobs(profile_path=profile_fp, top_n=top_n, run_id=run_id)
+        job_files = sorted(glob.glob("outputs/jobs/job_post_v1_*.json"))
+        if recent_jobs > 0 and len(job_files) > recent_jobs:
+            job_files = job_files[-recent_jobs:]
+
+        shortlist = rank_all_jobs(
+            profile_path=profile_fp,
+            top_n=top_n,
+            run_id=run_id,
+            job_paths=job_files,
+        )
         out_path = write_shortlist(shortlist)
         log_event(logger, "ranking_completed", run_id, top_n=top_n, path=str(out_path))
         return {
@@ -706,9 +753,6 @@ def p21_langgraph_dry_run(payload: dict):
     return {"status": "ok", "result": out.model_dump()}
 
 
-<<<<<<< codex/analyze-and-fix-issues-in-main.py-and-home.py
-
-
 @app.post("/p21/langgraph/run")
 def p21_langgraph_run(payload: dict):
     """P21 implementation: execute deterministic LangGraph node pipeline (match->rank->generate->guardrails)."""
@@ -728,8 +772,123 @@ def p21_langgraph_run(payload: dict):
     }
 
 
-=======
->>>>>>> main
+
+
+@app.post("/p22/approval/decision")
+def p22_approval_decision(payload: dict):
+    run_id = str(payload.get("run_id") or new_run_id())
+    approved = bool(payload.get("approved", False))
+    reviewer = str(payload.get("reviewer") or "human")
+    notes = payload.get("notes")
+    result = write_p22_approval_decision(run_id=run_id, approved=approved, reviewer=reviewer, notes=notes)
+    return {"status": "ok", "result": result}
+
+
+@app.get("/p22/approval/latest")
+def p22_approval_latest(run_id: str):
+    return latest_p22_approval(run_id)
+
+
+@app.post("/p23/memory/upsert")
+def p23_memory_upsert_endpoint(payload: dict):
+    return p23_memory_upsert(
+        run_id=str(payload.get("run_id") or new_run_id()),
+        namespace=str(payload.get("namespace") or "default"),
+        key=str(payload.get("key") or "entry"),
+        value=payload.get("value"),
+    )
+
+
+@app.get("/p23/memory/get")
+def p23_memory_get_endpoint(run_id: str, namespace: str, key: str):
+    return p23_memory_get(run_id=run_id, namespace=namespace, key=key)
+
+
+@app.post("/p24/evaluator/run")
+def p24_evaluator_run(payload: dict):
+    run_id = str(payload.get("run_id") or new_run_id())
+    return p24_evaluate_run(run_id)
+
+
+@app.post("/agents/parser/extract")
+def agent_parser_extract(payload: dict):
+    return parser_extract(payload)
+
+
+@app.post("/agents/vision/ocr")
+def agent_vision_ocr(payload: dict):
+    return vision_ocr(payload)
+
+
+@app.post("/agents/connector/ingest")
+def agent_connector_ingest(payload: dict):
+    return connector_ingest(payload)
+
+
+
+@app.post("/p24/evaluator/run_v2")
+def p24_evaluator_run_v2(payload: dict):
+    run_id = str(payload.get("run_id") or new_run_id())
+    w = payload.get("weights") or {}
+    weights = EvalWeights(
+        match_quality=int(w.get("match_quality", 30)),
+        guardrails_quality=int(w.get("guardrails_quality", 25)),
+        approval_quality=int(w.get("approval_quality", 20)),
+        package_quality=int(w.get("package_quality", 15)),
+        pipeline_reliability=int(w.get("pipeline_reliability", 10)),
+    )
+    return evaluate_run_v2(run_id=run_id, weights=weights)
+
+
+@app.get("/p24/evaluator/latest")
+def p24_evaluator_latest(run_id: str):
+    return latest_eval_v2(run_id)
+
+
+
+
+
+
+if _MULTIPART_AVAILABLE:
+    @app.post("/p25/automation/run_upload")
+    def p25_automation_run_upload(
+        resume_file: UploadFile = File(...),
+        job_file: UploadFile = File(...),
+        candidate_name: str | None = Form(default=None),
+        run_id: str | None = Form(default=None),
+        top_n: int = Form(default=3),
+    ):
+        resume_text = _extract_upload_text(resume_file)
+        job_text = _extract_upload_text(job_file)
+        payload = {
+            "run_id": run_id,
+            "candidate_name": candidate_name,
+            "top_n": top_n,
+            "resume": {"source_type": "inline", "text": resume_text},
+            "jobs": {"job_texts": [job_text]},
+        }
+        return p25_automation_run(payload)
+else:
+    @app.post("/p25/automation/run_upload")
+    def p25_automation_run_upload_unavailable():
+        return {
+            "status": "error",
+            "message": "python-multipart is not installed. Install with: pip install python-multipart",
+        }
+
+@app.post("/p25/automation/run")
+def p25_automation_run_endpoint(payload: dict):
+    return p25_automation_run(payload)
+
+
+@app.get("/p25/automation/trace/latest")
+def p25_automation_trace_latest(run_id: str | None = None):
+    return latest_p25_trace(run_id)
+
+@app.get("/p25/system/health")
+def p25_system_health():
+    return run_system_health_checks()
+
 @app.get("/phases/status")
 def phases_status():
     phase_status = {
@@ -737,25 +896,18 @@ def phases_status():
         "P18": "ready",
         "P19": "ready",
         "P20": "ready",
-<<<<<<< codex/analyze-and-fix-issues-in-main.py-and-home.py
         "P21": "ready",
-=======
-        "P21": "planned",
->>>>>>> main
-        "P22": "planned",
-        "P23": "planned",
-        "P24": "planned",
+        "P22": "ready",
+        "P23": "ready",
+        "P24": "ready",
+        "P25": "in_progress",
     }
     return {
         "status": "ok",
         "phases": [
             {"phase": p, "status": st, "available": st == "ready"} for p, st in phase_status.items()
         ],
-<<<<<<< codex/analyze-and-fix-issues-in-main.py-and-home.py
-        "next_focus": "P22",
-=======
-        "next_focus": "P21",
->>>>>>> main
+        "next_focus": "P25 (free-stack integrations)",
     }
 
 
