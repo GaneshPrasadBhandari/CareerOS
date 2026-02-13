@@ -250,3 +250,21 @@ ls outputs/phase3 | rg 'phase3_(flow|agents|layers|architecture_map)'
 
 If `dot` is missing, `.mmd`/`.dot` are still generated.
 If `reportlab` is missing, PDF is skipped with a warning message.
+
+
+## 16) If `curl -s ... | jq` prints nothing
+
+`-s` (silent) hides connection errors. If API is down, output may look blank.
+
+Use one of these for debugging:
+
+```bash
+curl -v http://127.0.0.1:8000/health
+curl --fail-with-body http://127.0.0.1:8000/health
+```
+
+Then start API if needed:
+
+```bash
+scripts/run_phase2_app.sh api
+```
