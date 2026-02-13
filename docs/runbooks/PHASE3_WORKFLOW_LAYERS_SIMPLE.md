@@ -71,3 +71,47 @@ git pull --rebase origin phase3-dev
 
 Then restart API process and re-run curl.
 
+
+
+## E) Model/tool plan by upcoming agent
+
+- **Parser Agent (P22/P23 support)**
+  - Purpose: parse resume/JD from PDF, DOCX, TXT, CSV.
+  - Tools: `python-docx`, PDF parser, optional OCR bridge.
+  - AI usage: minimal/no LLM for deterministic extraction.
+
+- **Vision Agent (later)**
+  - Purpose: OCR scanned resumes/images.
+  - Tools/models: Tesseract/EasyOCR or vision-language model.
+  - AI usage: CV model first, optional LLM cleanup pass.
+
+- **Matcher/Ranker Agent (existing + upgrades)**
+  - Purpose: compute fit and priority.
+  - Models: deterministic scoring now; later embedding + reranker.
+
+- **Generator Agent (existing + upgrades)**
+  - Purpose: resume bullets/cover text package generation.
+  - Models: LLM prompt pipeline (OpenAI/open model route based on cost/quality policy).
+
+- **Connector/Scrape Agent (later, compliance-first)**
+  - Purpose: ingest jobs from APIs/imports/connectors.
+  - Tools: official APIs first, controlled scraping only where compliant.
+
+- **Approval Agent (P22)**
+  - Purpose: human-in-loop decisions (`approve/reject`) for sensitive actions.
+  - AI usage: no auto-approve; AI may only explain diffs/risk.
+
+- **Memory Manager (P23)**
+  - Purpose: persist decisions, evidence, and retrieval state.
+  - Tools: SQLite/Postgres + vector store.
+
+- **Evaluator Agent (P24)**
+  - Purpose: quality metrics, regression checks, and drift signals.
+  - Tools: evaluation harness + dashboards.
+
+## F) Are we already automating and using AI?
+
+- **Automated now**: P20 contract validation and P21 end-to-end deterministic orchestration.
+- **Agentic now**: orchestration graph structure exists (LangGraph path; deterministic fallback path also supported).
+- **LLM usage now**: limited/controlled; architecture supports LLM-backed generation, with stronger expansion in P22+.
+- **Human-in-loop**: final sensitive actions remain manual until P22 approval nodes are implemented.
