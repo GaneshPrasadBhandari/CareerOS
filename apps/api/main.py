@@ -96,10 +96,7 @@ from apps.api.routes import orchestrator
 
 from careeros.phase3.contracts import AgentTaskInput
 from careeros.phase3.service import validate_contract, dry_run_agent_step, PHASE3_STEPS
-<<<<<<< codex/analyze-and-fix-issues-in-main.py-and-home.py
 from careeros.phase3.langgraph_flow import run_langgraph_pipeline
-=======
->>>>>>> main
 
 
 # ------------------------------------------------------------------------------
@@ -706,9 +703,6 @@ def p21_langgraph_dry_run(payload: dict):
     return {"status": "ok", "result": out.model_dump()}
 
 
-<<<<<<< codex/analyze-and-fix-issues-in-main.py-and-home.py
-
-
 @app.post("/p21/langgraph/run")
 def p21_langgraph_run(payload: dict):
     """P21 implementation: execute deterministic LangGraph node pipeline (match->rank->generate->guardrails)."""
@@ -728,8 +722,6 @@ def p21_langgraph_run(payload: dict):
     }
 
 
-=======
->>>>>>> main
 @app.get("/phases/status")
 def phases_status():
     phase_status = {
@@ -737,11 +729,7 @@ def phases_status():
         "P18": "ready",
         "P19": "ready",
         "P20": "ready",
-<<<<<<< codex/analyze-and-fix-issues-in-main.py-and-home.py
         "P21": "ready",
-=======
-        "P21": "planned",
->>>>>>> main
         "P22": "planned",
         "P23": "planned",
         "P24": "planned",
@@ -751,11 +739,7 @@ def phases_status():
         "phases": [
             {"phase": p, "status": st, "available": st == "ready"} for p, st in phase_status.items()
         ],
-<<<<<<< codex/analyze-and-fix-issues-in-main.py-and-home.py
         "next_focus": "P22",
-=======
-        "next_focus": "P21",
->>>>>>> main
     }
 
 
