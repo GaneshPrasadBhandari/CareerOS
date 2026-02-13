@@ -23,11 +23,17 @@ def write_shortlist(shortlist: RankedShortlist, out_dir: str = "outputs/ranking"
     path.write_text(shortlist.model_dump_json(indent=2), encoding="utf-8")
     return path
 
-def rank_all_jobs(profile_path: str, top_n: int, run_id: str, jobs_dir: str = "outputs/jobs") -> RankedShortlist:
+def rank_all_jobs(
+    profile_path: str,
+    top_n: int,
+    run_id: str,
+    jobs_dir: str = "outputs/jobs",
+    job_paths: Optional[list[str]] = None,
+) -> RankedShortlist:
     profile = EvidenceProfile.model_validate_json(Path(profile_path).read_text(encoding="utf-8"))
 
-    # Logic change: Search in the provided jobs_dir
-    job_files = sorted(glob.glob(f"{jobs_dir}/job_post_v1_*.json"))
+    # Search either provided explicit job paths or jobs_dir artifacts
+    job_files = sorted(job_paths) if job_paths else sorted(glob.glob(f"{jobs_dir}/job_post_v1_*.json"))
     if not job_files:
         raise ValueError(f"No job_post artifacts found in {jobs_dir}. Run Phase 1/2 ingestion first.")
 

@@ -19,7 +19,22 @@ st.set_page_config(page_title="CareerOS", layout="wide")
 st.title("CareerOS — Capstone MVP")
 st.caption("Resume + Jobs → Rank → Grounded Artifacts → Guardrails → Export")
 
-api_url = st.text_input("API URL", value="http://127.0.0.1:8000")
+default_api = st.session_state.get("api_url", "http://127.0.0.1:8000")
+api_url = st.text_input("API URL", value=default_api, help="Run API first: scripts/run_phase2_app.sh api")
+st.session_state["api_url"] = api_url
+
+# live connectivity hint (prevents confusing Connection refused errors across sections)
+try:
+    _health = httpx.get(f"{api_url}/health", timeout=2)
+    if _health.status_code == 200:
+        st.success(f"API connected: {api_url}")
+    else:
+        st.warning(f"API responded with status={_health.status_code}. URL: {api_url}")
+except Exception as _e:
+    st.error(
+        "API not reachable. Start FastAPI first in terminal: `scripts/run_phase2_app.sh api` "
+        f"(current URL: {api_url}, error: {_e})"
+    )
 
 if st.button("Check API Health", key="btn_health"):
     try:
@@ -27,7 +42,7 @@ if st.button("Check API Health", key="btn_health"):
         st.success("API reachable")
         st.json(r.json())
     except Exception as e:
-        st.error(f"API not reachable: {e}")
+        st.error(f"API not reachable: {e}. Start API: scripts/run_phase2_app.sh api")
 
 if st.button("Check API Version", key="btn_version"):
     try:
@@ -42,7 +57,7 @@ with st.expander("Pipeline Progress (P1-P19)", expanded=False):
             r = httpx.get(f"{api_url}/phases/status", timeout=10)
             st.json(r.json())
         except Exception as e:
-            st.error(f"Failed to load phases: {e}")
+            st.error(f"Failed to load phases: {e}. Ensure API is running: scripts/run_phase2_app.sh api")
 
 
 if st.button("Check Phase Coverage (P1-P19)", key="btn_phases"):
@@ -51,7 +66,7 @@ if st.button("Check Phase Coverage (P1-P19)", key="btn_phases"):
         data = r.json()
         st.json(data)
     except Exception as e:
-        st.error(f"Failed to load phases: {e}")
+        st.error(f"Failed to load phases: {e}. Ensure API is running: scripts/run_phase2_app.sh api")
 
 
 
@@ -88,7 +103,7 @@ if st.button("Create Intake Bundle", key="btn_intake"):
         r = httpx.post(f"{api_url}/intake", json=payload, timeout=10)
         st.json(r.json())
     except Exception as e:
-        st.error(f"Failed to create intake bundle: {e}")
+        st.error(f"Failed to create intake bundle: {e}. Ensure API is running: scripts/run_phase2_app.sh api")
 
 
 #Add Streamlit section L2
@@ -715,3 +730,34 @@ if st.button("Run P21 Full Graph (Deterministic)"):
     except Exception as e:
         st.error(f"P21 full run failed: {e}")
 
+
+# --- P25 ONE-CLICK FILE AUTOMATION ---
+st.header("P25 — One-Click Automation (Upload Resume + Job File)")
+
+p25_candidate = st.text_input("P25 Candidate Name", value="Demo Candidate")
+p25_top_n = st.number_input("P25 Top N", min_value=1, max_value=10, value=3, step=1)
+resume_upload = st.file_uploader("Upload resume file (.txt/.pdf/.docx)", type=["txt", "pdf", "docx"], key="p25_resume_upload")
+job_upload = st.file_uploader("Upload job description file (.txt/.pdf/.docx)", type=["txt", "pdf", "docx"], key="p25_job_upload")
+
+if st.button("Run P25 Automation from Uploaded Files"):
+    if not resume_upload or not job_upload:
+        st.warning("Please upload both resume and job files.")
+    else:
+        try:
+            files = {
+                "resume_file": (resume_upload.name, resume_upload.getvalue(), resume_upload.type or "application/octet-stream"),
+                "job_file": (job_upload.name, job_upload.getvalue(), job_upload.type or "application/octet-stream"),
+            }
+            data = {
+                "candidate_name": p25_candidate,
+                "top_n": int(p25_top_n),
+            }
+            r = requests.post(f"{api_url}/p25/automation/run_upload", files=files, data=data, timeout=120)
+            if r.status_code == 200:
+                st.success("P25 automation completed")
+                st.json(r.json())
+            else:
+                st.error(f"P25 upload run failed ({r.status_code})")
+                st.write(r.text)
+        except Exception as e:
+            st.error(f"P25 upload run failed: {e}")

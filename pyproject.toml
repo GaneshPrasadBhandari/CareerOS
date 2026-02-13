@@ -53,8 +53,7 @@ where = ["src"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "-q"
-asyncio_default_fixture_loop_scope = "function"
+addopts = "-q -p no:langsmith -p no:langsmith.pytest_plugin"
 
 # --- ADD MLOps CONFIG ---
 [tool.mlflow]
