@@ -231,6 +231,13 @@ outputs/**
 !outputs/**/.gitkeep
 !outputs/**/*.dvc
 
+# CareerOS generated exports (keep folder structure, ignore generated payloads)
+exports/packages/*.json
+exports/submissions/app_*/
+
+# Local helper scripts
+check_services.py
+
 
 # ===== CareerOS: runtime artifacts (do not commit) =====
 
