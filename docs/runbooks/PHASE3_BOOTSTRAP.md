@@ -182,3 +182,41 @@ git pull --rebase origin phase3-dev
 git ls-files scripts | rg plot_phase3_flow.py
 python scripts/plot_phase3_flow.py
 ```
+
+
+## 13) One-command diagnostics (recommended)
+
+Run this first when anything is inconsistent:
+
+```bash
+scripts/phase3_doctor.sh
+```
+
+Optional custom API URL:
+
+```bash
+scripts/phase3_doctor.sh http://127.0.0.1:8000
+```
+
+It checks:
+- current branch + recent commits
+- if `/p21/langgraph/run` exists in code
+- if `scripts/plot_phase3_flow.py` exists
+- API readiness + P20/P21 endpoint availability
+- exact next commands to recover
+
+## 14) Common typo in pytest path
+
+If you run this by mistake:
+
+```bash
+pytest -q tests/unit_tests/integration
+```
+
+you will get `file or directory not found` because folder is wrong.
+
+Use:
+
+```bash
+pytest -q tests/unit tests/integration
+```
