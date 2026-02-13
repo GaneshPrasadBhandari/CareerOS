@@ -822,14 +822,14 @@ def phases_status():
         "P22": "ready",
         "P23": "ready",
         "P24": "ready",
-        "P25": "planned",
+        "P25": "in_progress",
     }
     return {
         "status": "ok",
         "phases": [
             {"phase": p, "status": st, "available": st == "ready"} for p, st in phase_status.items()
         ],
-        "next_focus": "P25",
+        "next_focus": "P25 (free-stack integrations)",
     }
 
 

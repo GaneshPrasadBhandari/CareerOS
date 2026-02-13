@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from fastapi.testclient import TestClient
 
 from apps.api.main import app
@@ -36,3 +38,6 @@ def test_p24_v2_and_p25_health_endpoints():
     assert "checks" in h
     assert "llm" in h["checks"]
     assert "vector_db" in h["checks"]
+    assert "document_tools" in h["checks"]
+    assert "artifact_path" in h
+    assert Path(h["artifact_path"]).exists()

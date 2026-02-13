@@ -108,6 +108,13 @@ Replace deterministic stub with real extraction pipeline:
 
 ---
 
+## Current P25 implementation status (what is already done)
+
+- API endpoint available: `GET /p25/system/health`.
+- Runtime checks implemented for orchestration (`langgraph`), LLM runtime (`ollama`, installed HF stack), vector DB libs (`chromadb`, `qdrant_client`, `faiss`), document tooling (`pypdf`, `python-docx`, `unstructured`, OCR dependencies), and SQLite storage health.
+- Every health call writes a timestamped snapshot artifact under `outputs/phase3/p25_system_checks/` for audit/demo evidence.
+- Status meaning: this is **P25 in-progress** foundation, not final full autonomous production automation yet.
+
 ## 5) P25 goal: real free-stack automation (no paid OpenAI)
 
 P25 should focus on **free/open-source runtime** integrations.
