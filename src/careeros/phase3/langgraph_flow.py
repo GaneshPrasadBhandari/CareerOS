@@ -10,7 +10,13 @@ import glob
 from pathlib import Path
 from typing import TypedDict
 
-from langgraph.graph import StateGraph, START, END
+try:
+    from langgraph.graph import StateGraph, START, END
+    _LANGGRAPH_AVAILABLE = True
+except ModuleNotFoundError:
+    StateGraph = None  # type: ignore[assignment]
+    START = END = None  # type: ignore[assignment]
+    _LANGGRAPH_AVAILABLE = False
 
 from careeros.parsing.schema import EvidenceProfile
 from careeros.jobs.schema import JobPost
@@ -114,6 +120,9 @@ def _node_guardrails(state: P21State) -> P21State:
 
 
 def build_p21_graph():
+    if not _LANGGRAPH_AVAILABLE:
+        raise RuntimeError("langgraph is not installed; graph compile is unavailable")
+
     graph = StateGraph(P21State)
 
     graph.add_node("load_context", _node_load_context)
@@ -141,14 +150,28 @@ def run_langgraph_pipeline(
     job_path: str | None = None,
     top_n: int = 3,
 ) -> dict:
-    """Run P21 deterministic LangGraph pipeline and return final state."""
+    """Run P21 pipeline and return final state.
 
-    app = build_p21_graph()
+    Uses LangGraph when installed; otherwise falls back to equivalent
+    deterministic step execution so local/dev environments can still run tests.
+    """
+
     initial: P21State = {
         "run_id": run_id,
         "profile_path": profile_path or "",
         "job_path": job_path or "",
         "top_n": int(top_n),
     }
+
+    if not _LANGGRAPH_AVAILABLE:
+        state: P21State = dict(initial)
+        for step in (_node_load_context, _node_match, _node_rank, _node_generate, _node_guardrails):
+            state.update(step(state))
+            if _route_on_error(state) == "error":
+                state.update(_node_error(state))
+                break
+        return dict(state)
+
+    app = build_p21_graph()
     result = app.invoke(initial)
     return dict(result)

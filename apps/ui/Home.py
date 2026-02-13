@@ -19,7 +19,22 @@ st.set_page_config(page_title="CareerOS", layout="wide")
 st.title("CareerOS — Capstone MVP")
 st.caption("Resume + Jobs → Rank → Grounded Artifacts → Guardrails → Export")
 
-api_url = st.text_input("API URL", value="http://127.0.0.1:8000")
+default_api = st.session_state.get("api_url", "http://127.0.0.1:8000")
+api_url = st.text_input("API URL", value=default_api, help="Run API first: scripts/run_phase2_app.sh api")
+st.session_state["api_url"] = api_url
+
+# live connectivity hint (prevents confusing Connection refused errors across sections)
+try:
+    _health = httpx.get(f"{api_url}/health", timeout=2)
+    if _health.status_code == 200:
+        st.success(f"API connected: {api_url}")
+    else:
+        st.warning(f"API responded with status={_health.status_code}. URL: {api_url}")
+except Exception as _e:
+    st.error(
+        "API not reachable. Start FastAPI first in terminal: `scripts/run_phase2_app.sh api` "
+        f"(current URL: {api_url}, error: {_e})"
+    )
 
 if st.button("Check API Health", key="btn_health"):
     try:
@@ -27,7 +42,7 @@ if st.button("Check API Health", key="btn_health"):
         st.success("API reachable")
         st.json(r.json())
     except Exception as e:
-        st.error(f"API not reachable: {e}")
+        st.error(f"API not reachable: {e}. Start API: scripts/run_phase2_app.sh api")
 
 if st.button("Check API Version", key="btn_version"):
     try:
@@ -42,7 +57,7 @@ with st.expander("Pipeline Progress (P1-P19)", expanded=False):
             r = httpx.get(f"{api_url}/phases/status", timeout=10)
             st.json(r.json())
         except Exception as e:
-            st.error(f"Failed to load phases: {e}")
+            st.error(f"Failed to load phases: {e}. Ensure API is running: scripts/run_phase2_app.sh api")
 
 
 if st.button("Check Phase Coverage (P1-P19)", key="btn_phases"):
@@ -51,7 +66,7 @@ if st.button("Check Phase Coverage (P1-P19)", key="btn_phases"):
         data = r.json()
         st.json(data)
     except Exception as e:
-        st.error(f"Failed to load phases: {e}")
+        st.error(f"Failed to load phases: {e}. Ensure API is running: scripts/run_phase2_app.sh api")
 
 
 
@@ -88,7 +103,7 @@ if st.button("Create Intake Bundle", key="btn_intake"):
         r = httpx.post(f"{api_url}/intake", json=payload, timeout=10)
         st.json(r.json())
     except Exception as e:
-        st.error(f"Failed to create intake bundle: {e}")
+        st.error(f"Failed to create intake bundle: {e}. Ensure API is running: scripts/run_phase2_app.sh api")
 
 
 #Add Streamlit section L2
