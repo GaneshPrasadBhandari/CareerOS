@@ -237,6 +237,7 @@ exports/submissions/app_*/
 
 # Local helper scripts
 check_services.py
+rough.txt
 
 
 # ===== CareerOS: runtime artifacts (do not commit) =====
