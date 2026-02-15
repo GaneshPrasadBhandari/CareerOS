@@ -4,7 +4,8 @@ import json
 from pathlib import Path
 from datetime import datetime
 
-from src.careeros.intake.schema import IntakeBundle
+#from src.careeros.intake.schema import IntakeBundle
+from careeros.intake.schema import IntakeBundle
 
 
 def write_intake_bundle(bundle: IntakeBundle, out_dir: str = "outputs/intake") -> Path:
