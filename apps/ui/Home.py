@@ -1,3 +1,9 @@
+import sys
+import os
+
+# This line tells Python that the 'src' folder contains our packages
+sys.path.append(os.path.join(os.path.dirname(__file__), "src"))
+
 import streamlit as st
 import httpx
 import requests

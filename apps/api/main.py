@@ -1,6 +1,11 @@
-from __future__ import annotations
 import sys
 import os
+
+# This line tells Python that the 'src' folder contains our packages
+sys.path.append(os.path.join(os.path.dirname(__file__), "src"))
+
+from __future__ import annotations
+
 
 # This adds the 'src' folder to the system path so imports work
 sys.path.append(os.path.join(os.path.dirname(__file__), "src"))
