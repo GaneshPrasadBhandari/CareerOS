@@ -31,6 +31,8 @@ dependencies = [
   "mcp>=1.0.0",            # Model Context Protocol
   "google-search-results",  # Google Serper API
   "python-docx>=1.2.0",
+  "python-multipart",     
+  "requests",
   "reportlab>=4.4.0"
 ]
 
