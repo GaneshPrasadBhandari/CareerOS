@@ -1,9 +1,15 @@
 from __future__ import annotations
 
+import sys
+import os
+from pathlib import Path
+
+# This adds the root 'src' folder to the path
+ROOT_DIR = Path(__file__).resolve().parents[2] 
+sys.path.append(str(ROOT_DIR / "src"))
+
 import glob
 import importlib.util
-import sys
-from pathlib import Path
 from typing import Optional
 
 from fastapi import FastAPI, HTTPException, Query, Request, UploadFile, File, Form
