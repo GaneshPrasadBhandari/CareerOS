@@ -267,23 +267,26 @@ def connector_ingest(payload: dict[str, Any]) -> dict[str, Any]:
 #         return {"status": "degraded", "provider": "ollama", "text": "", "error": str(e)}
 #     return {"status": "degraded", "provider": "ollama", "text": "", "error": f"HTTP {r.status_code}"}
 
+
+# 
+
+
 def _ollama_summary(run_id: str, score: float) -> dict[str, Any]:
     """
-    RESOLVED LLM SUMMARY:
-    1. Dynamic URL: Handles Mac 'localhost' vs '127.0.0.1' networking issues.
-    2. Model Fallback: Uses 'llama3' to match your 'ollama list'.
-    3. Robust Timeout: Increased to 30s to allow for model loading.
+    FIXED: Resolves 'Connection Refused' by using localhost and 
+    correcting the model name to match your local setup.
     """
-    # Look for OLLAMA_HOST env var, default to localhost for Mac compatibility
+    # 1. Use localhost for better Mac compatibility
     base_url = os.getenv("OLLAMA_HOST", "http://localhost:11434")
-    ollama_url = f"{base_url}/api/generate"
+    ollama_endpoint = f"{base_url}/api/generate"
     
     prompt = (
-        "You are a career assistant. Summarize this run in 3 bullet points and suggest 2 next actions. "
+        "You are a career assistant. Summarize this run in 3 short bullet points "
+        "and suggest 2 next actions based on the match score. "
         f"Run ID: {run_id}. Match score: {score}. Keep it concise."
     )
     
-    # Using 'llama3' as confirmed by your 'ollama list' command
+    # 2. Use 'llama3' as seen in your 'ollama list'
     body = {
         "model": "llama3", 
         "prompt": prompt, 
@@ -291,22 +294,21 @@ def _ollama_summary(run_id: str, score: float) -> dict[str, Any]:
     }
     
     try:
-        # 30s timeout handles "waking up" larger models or slower starts
-        r = httpx.post(ollama_url, json=body, timeout=30.0)
+        # 3. 30s timeout to allow for model loading/cold start
+        r = httpx.post(ollama_endpoint, json=body, timeout=30.0)
         
         if r.status_code == 200:
             return {
                 "status": "ok", 
                 "provider": "ollama", 
-                "text": r.json().get("response", ""),
-                "url_used": ollama_url
+                "text": r.json().get("response", "")
             }
         
         return {
             "status": "degraded", 
             "provider": "ollama", 
             "text": "", 
-            "error": f"HTTP {r.status_code} from {ollama_url}"
+            "error": f"HTTP {r.status_code} - Is Ollama server healthy?"
         }
         
     except Exception as e:
@@ -314,7 +316,7 @@ def _ollama_summary(run_id: str, score: float) -> dict[str, Any]:
             "status": "degraded", 
             "provider": "ollama", 
             "text": "", 
-            "error": f"Connection failed to {ollama_url}: {str(e)}"
+            "error": f"Connection failed to {ollama_endpoint}: {str(e)}"
         }
 
 
