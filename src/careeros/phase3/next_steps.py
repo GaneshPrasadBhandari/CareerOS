@@ -357,54 +357,38 @@ def connector_ingest(payload: dict[str, Any]) -> dict[str, Any]:
 
 
 def _ollama_summary(run_id: str, score: float) -> dict[str, Any]:
-    """
-    RESOLVED: Matches the exact IPv4 address from the Ollama logs
-    and handles the high memory usage by increasing the timeout.
-    """
-    # Use the exact IP from your logs: 'Listening on 127.0.0.1:11434'
-    ollama_url = "http://127.0.0.1:11434/api/generate"
+    # Try both common local loopbacks to bypass macOS networking quirks
+    hosts = ["http://127.0.0.1:11434", "http://localhost:11434"]
+    last_error = ""
     
     prompt = (
-        "You are a career assistant. Summarize this run in 3 short bullet points "
-        "and suggest 2 next actions based on the match score. "
+        "You are a career assistant. Summarize this run in 3 short bullet points. "
         f"Run ID: {run_id}. Match score: {score}. Keep it concise."
     )
-    
-    # Using 'llama3' which you confirmed is in your 'ollama list'
-    body = {
-        "model": "llama3", 
-        "prompt": prompt, 
-        "stream": False
+    body = {"model": "llama3", "prompt": prompt, "stream": False}
+
+    for host in hosts:
+        url = f"{host}/api/generate"
+        try:
+            # High timeout (60s) because your available RAM is low (5.7GB)
+            r = httpx.post(url, json=body, timeout=60.0)
+            if r.status_code == 200:
+                return {
+                    "status": "ok", 
+                    "provider": "ollama", 
+                    "text": r.json().get("response", ""),
+                    "active_host": host
+                }
+        except Exception as e:
+            last_error = str(e)
+            continue # Try the next host
+            
+    return {
+        "status": "degraded", 
+        "provider": "ollama", 
+        "text": "", 
+        "error": f"Connection failed on all hosts. Last error: {last_error}"
     }
-    
-    try:
-        # Increase timeout to 60s. Your Mac has 5.7GB RAM free, 
-        # so loading a 4.7GB model will be slow the first time.
-        # r = httpx.post(ollama_url, json=body, timeout=60.0)
-        # Using 127.0.0.1 bypasses the Mac 'localhost' IPv6 confusion
-        r = httpx.post("http://127.0.0.1:11434/api/generate", json=body, timeout=60)
-        
-        
-        if r.status_code == 200:
-            return {
-                "status": "ok", 
-                "provider": "ollama", 
-                "text": r.json().get("response", "")
-            }
-        return {
-            "status": "degraded", 
-            "provider": "ollama", 
-            "text": "", 
-            "error": f"Ollama returned HTTP {r.status_code}"
-        }
-        
-    except Exception as e:
-        return {
-            "status": "degraded", 
-            "provider": "ollama", 
-            "text": "", 
-            "error": f"Connection failed to {ollama_url}: {str(e)}"
-        }
 
 
 
