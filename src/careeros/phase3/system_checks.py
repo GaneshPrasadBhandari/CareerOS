@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
 import shutil
 import sqlite3
 from datetime import datetime, timezone
@@ -22,7 +23,11 @@ def _utc_now_iso() -> str:
 def run_system_health_checks() -> dict[str, Any]:
     ts = _utc_now_iso()
 
-    ollama_url = "http://127.0.0.1:11434"
+
+    
+
+    # ollama_url = "http://127.0.0.1:11434"
+    ollama_url = os.getenv("OLLAMA_HOST", "http://127.0.0.1:11434")
     ollama_ok = False
     ollama_error = None
     ollama_models: list[str] = []

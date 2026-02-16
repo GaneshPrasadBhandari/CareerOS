@@ -38,3 +38,13 @@ class ToolRegistry:
                 }
             )
         return out
+
+
+
+# Add this to ToolRegistry class in registry.py
+def execute(self, name: str, input_data: dict) -> Any:
+    tool = self.get(name)
+    # Validate input using the tool's Pydantic model
+    validated_input = tool.input_model.model_validate(input_data)
+    # Execute and return output
+    return tool.handler(validated_input)
