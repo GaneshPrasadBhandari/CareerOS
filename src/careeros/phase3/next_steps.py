@@ -271,14 +271,60 @@ def connector_ingest(payload: dict[str, Any]) -> dict[str, Any]:
 # 
 
 
+# def _ollama_summary(run_id: str, score: float) -> dict[str, Any]:
+#     """
+#     FIXED: Resolves 'Connection Refused' by using localhost and 
+#     correcting the model name to match your local setup.
+#     """
+#     # 1. Use localhost for better Mac compatibility
+#     base_url = os.getenv("OLLAMA_HOST", "http://localhost:11434")
+#     ollama_endpoint = f"{base_url}/api/generate"
+    
+#     prompt = (
+#         "You are a career assistant. Summarize this run in 3 short bullet points "
+#         "and suggest 2 next actions based on the match score. "
+#         f"Run ID: {run_id}. Match score: {score}. Keep it concise."
+#     )
+    
+#     # 2. Use 'llama3' as seen in your 'ollama list'
+#     body = {
+#         "model": "llama3", 
+#         "prompt": prompt, 
+#         "stream": False
+#     }
+    
+#     try:
+#         # 3. 30s timeout to allow for model loading/cold start
+#         r = httpx.post(ollama_endpoint, json=body, timeout=30.0)
+        
+#         if r.status_code == 200:
+#             return {
+#                 "status": "ok", 
+#                 "provider": "ollama", 
+#                 "text": r.json().get("response", "")
+#             }
+        
+#         return {
+#             "status": "degraded", 
+#             "provider": "ollama", 
+#             "text": "", 
+#             "error": f"HTTP {r.status_code} - Is Ollama server healthy?"
+#         }
+        
+#     except Exception as e:
+#         return {
+#             "status": "degraded", 
+#             "provider": "ollama", 
+#             "text": "", 
+#             "error": f"Connection failed to {ollama_endpoint}: {str(e)}"
+#         }
+
+
+
 def _ollama_summary(run_id: str, score: float) -> dict[str, Any]:
-    """
-    FIXED: Resolves 'Connection Refused' by using localhost and 
-    correcting the model name to match your local setup.
-    """
-    # 1. Use localhost for better Mac compatibility
-    base_url = os.getenv("OLLAMA_HOST", "http://localhost:11434")
-    ollama_endpoint = f"{base_url}/api/generate"
+    # 1. MATCH THE LOGS: Use the exact IP Ollama is listening on
+    # We use 127.0.0.1 because your log said: "Listening on 127.0.0.1:11434"
+    ollama_url = "http://127.0.0.1:11434/api/generate"
     
     prompt = (
         "You are a career assistant. Summarize this run in 3 short bullet points "
@@ -286,7 +332,7 @@ def _ollama_summary(run_id: str, score: float) -> dict[str, Any]:
         f"Run ID: {run_id}. Match score: {score}. Keep it concise."
     )
     
-    # 2. Use 'llama3' as seen in your 'ollama list'
+    # 2. ENSURE MODEL MATCH: Using 'llama3' which we saw in your 'ollama list'
     body = {
         "model": "llama3", 
         "prompt": prompt, 
@@ -294,8 +340,9 @@ def _ollama_summary(run_id: str, score: float) -> dict[str, Any]:
     }
     
     try:
-        # 3. 30s timeout to allow for model loading/cold start
-        r = httpx.post(ollama_endpoint, json=body, timeout=30.0)
+        # 3. Increased timeout to 60s because your logs show only 5.7 GiB 
+        # of available RAM—it might take a moment to load the model.
+        r = httpx.post(ollama_url, json=body, timeout=60.0)
         
         if r.status_code == 200:
             return {
@@ -303,21 +350,10 @@ def _ollama_summary(run_id: str, score: float) -> dict[str, Any]:
                 "provider": "ollama", 
                 "text": r.json().get("response", "")
             }
-        
-        return {
-            "status": "degraded", 
-            "provider": "ollama", 
-            "text": "", 
-            "error": f"HTTP {r.status_code} - Is Ollama server healthy?"
-        }
+        return {"status": "degraded", "error": f"Ollama returned {r.status_code}"}
         
     except Exception as e:
-        return {
-            "status": "degraded", 
-            "provider": "ollama", 
-            "text": "", 
-            "error": f"Connection failed to {ollama_endpoint}: {str(e)}"
-        }
+        return {"status": "degraded", "error": str(e)}
 
 
 
