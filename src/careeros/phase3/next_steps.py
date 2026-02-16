@@ -357,38 +357,28 @@ def connector_ingest(payload: dict[str, Any]) -> dict[str, Any]:
 
 
 def _ollama_summary(run_id: str, score: float) -> dict[str, Any]:
-    # Try both common local loopbacks to bypass macOS networking quirks
-    hosts = ["http://127.0.0.1:11434", "http://localhost:11434"]
-    last_error = ""
+    # Use the exact IP from your successful log: 127.0.0.1
+    ollama_url = "http://127.0.0.1:11434/api/generate"
     
-    prompt = (
-        "You are a career assistant. Summarize this run in 3 short bullet points. "
-        f"Run ID: {run_id}. Match score: {score}. Keep it concise."
-    )
-    body = {"model": "llama3", "prompt": prompt, "stream": False}
-
-    for host in hosts:
-        url = f"{host}/api/generate"
-        try:
-            # High timeout (60s) because your available RAM is low (5.7GB)
-            r = httpx.post(url, json=body, timeout=60.0)
-            if r.status_code == 200:
-                return {
-                    "status": "ok", 
-                    "provider": "ollama", 
-                    "text": r.json().get("response", ""),
-                    "active_host": host
-                }
-        except Exception as e:
-            last_error = str(e)
-            continue # Try the next host
-            
-    return {
-        "status": "degraded", 
-        "provider": "ollama", 
-        "text": "", 
-        "error": f"Connection failed on all hosts. Last error: {last_error}"
+    body = {
+        "model": "llama3", 
+        "prompt": f"You are a career assistant. Summarize this run {run_id} with score {score} in 2 bullets.",
+        "stream": False
     }
+    
+    try:
+        # Keep timeout at 60s because your 'available RAM' is 5.7GiB (tight for llama3)
+        r = httpx.post(ollama_url, json=body, timeout=60.0)
+        
+        if r.status_code == 200:
+            return {
+                "status": "ok", 
+                "provider": "ollama", 
+                "text": r.json().get("response", "")
+            }
+        return {"status": "degraded", "error": f"Ollama HTTP {r.status_code}"}
+    except Exception as e:
+        return {"status": "degraded", "error": f"Check Ollama at {ollama_url}: {str(e)}"}
 
 
 
