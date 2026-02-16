@@ -356,30 +356,34 @@ def connector_ingest(payload: dict[str, Any]) -> dict[str, Any]:
 #         return {"status": "degraded", "error": str(e)}
 
 
+import socket
+
 def _ollama_summary(run_id: str, score: float) -> dict[str, Any]:
-    # Use the exact IP from your successful log: 127.0.0.1
-    ollama_url = "http://127.0.0.1:11434/api/generate"
+    # 1. Force use of IPv4 loopback
+    ip = "127.0.0.1"
+    port = 11434
+    url = f"http://{ip}:{port}/api/generate"
     
+    # 2. Pre-check: Is the door even open?
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.settimeout(2)
+        if s.connect_ex((ip, port)) != 0:
+            return {"status": "degraded", "error": f"Ollama is not responding on {ip}:{port}. Run 'ollama serve' in terminal."}
+
     body = {
         "model": "llama3", 
-        "prompt": f"You are a career assistant. Summarize this run {run_id} with score {score} in 2 bullets.",
+        "prompt": f"Write 2 lines summarizing Alex Rivera's 100% match for run {run_id}.",
         "stream": False
     }
     
     try:
-        # Keep timeout at 60s because your 'available RAM' is 5.7GiB (tight for llama3)
-        r = httpx.post(ollama_url, json=body, timeout=60.0)
-        
-        if r.status_code == 200:
-            return {
-                "status": "ok", 
-                "provider": "ollama", 
-                "text": r.json().get("response", "")
-            }
-        return {"status": "degraded", "error": f"Ollama HTTP {r.status_code}"}
+        # 3. Use a standard Client to avoid proxy interference
+        with httpx.Client(transport=httpx.HTTPTransport(local_address="0.0.0.0")) as client:
+            r = client.post(url, json=body, timeout=60.0)
+            if r.status_code == 200:
+                return {"status": "ok", "provider": "ollama", "text": r.json().get("response", "")}
     except Exception as e:
-        return {"status": "degraded", "error": f"Check Ollama at {ollama_url}: {str(e)}"}
-
+        return {"status": "degraded", "error": f"Bridge error: {str(e)}"}
 
 
 
