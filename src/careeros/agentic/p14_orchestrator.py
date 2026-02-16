@@ -21,6 +21,31 @@ from careeros.followups.service import generate_next_actions, write_action_queue
 from careeros.notifications.service import generate_drafts_from_followups, write_drafts_bundle
 
 
+
+# --- ADD THIS AFTER IMPORTS ---
+from careeros.agentic.tools.registry import ToolRegistry
+from careeros.agentic.tools.spec import ToolSpec
+
+registry = ToolRegistry()
+
+# Example: Registering the Notification Draft Tool
+# You can do this for every Phase (P1-P11)
+def initialize_tools():
+    from careeros.notifications.service import generate_drafts_from_followups
+    from careeros.notifications.schema import DraftBundle # Your output model
+    
+    # We wrap the service in a ToolSpec
+    draft_tool = ToolSpec(
+        name="P11_notifications",
+        description="Generates communication drafts for the user",
+        input_model=dict, # Or your specific Pydantic input model
+        output_model=DraftBundle,
+        handler=lambda x: generate_drafts_from_followups(**x),
+        requires_approval=False # Drafts are usually safe
+    )
+    registry.register(draft_tool)
+
+
 def _utc_now_dt() -> datetime:
     return datetime.now(timezone.utc)
 

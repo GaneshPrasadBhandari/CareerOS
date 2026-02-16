@@ -3,8 +3,3 @@ Summary: Senior Software Engineer with 8 years of experience in Python, FastAPI,
 Skills: Python, FastAPI, PostgreSQL, Docker, Kubernetes, AWS (EC2, S3, Lambda).
 Experience: Developed scalable microservices at TechCorp. Managed containerized deployments using Kubernetes. Optimized database queries for high-traffic applications.
 
-Job Description Content (Save as job.txt):
-
-Role: Senior Backend Developer
-Requirements: 5+ years of experience with Python and web frameworks like FastAPI. Strong understanding of cloud services (AWS preferred). Experience with containerization using Docker.
-Responsibilities: Build and maintain high-performance APIs. Collaborate with the DevOps team on deployment strategies.

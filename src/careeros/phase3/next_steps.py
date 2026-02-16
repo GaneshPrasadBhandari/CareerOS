@@ -6,6 +6,7 @@ import re
 from datetime import datetime
 from pathlib import Path
 from typing import Any
+import os
 
 import httpx
 
@@ -252,20 +253,69 @@ def connector_ingest(payload: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+# def _ollama_summary(run_id: str, score: float) -> dict[str, Any]:
+#     prompt = (
+#         "You are a career assistant. Summarize this run in 3 bullet points and suggest 2 next actions. "
+#         f"Run ID: {run_id}. Match score: {score}. Keep it concise."
+#     )
+#     body = {"model": "llama3.1:8b-instruct", "prompt": prompt, "stream": False}
+#     try:
+#         r = httpx.post("http://127.0.0.1:11434/api/generate", json=body, timeout=20)
+#         if r.status_code == 200:
+#             return {"status": "ok", "provider": "ollama", "text": r.json().get("response", "")}
+#     except Exception as e:
+#         return {"status": "degraded", "provider": "ollama", "text": "", "error": str(e)}
+#     return {"status": "degraded", "provider": "ollama", "text": "", "error": f"HTTP {r.status_code}"}
+
 def _ollama_summary(run_id: str, score: float) -> dict[str, Any]:
+    """
+    RESOLVED LLM SUMMARY:
+    1. Dynamic URL: Handles Mac 'localhost' vs '127.0.0.1' networking issues.
+    2. Model Fallback: Uses 'llama3' to match your 'ollama list'.
+    3. Robust Timeout: Increased to 30s to allow for model loading.
+    """
+    # Look for OLLAMA_HOST env var, default to localhost for Mac compatibility
+    base_url = os.getenv("OLLAMA_HOST", "http://localhost:11434")
+    ollama_url = f"{base_url}/api/generate"
+    
     prompt = (
         "You are a career assistant. Summarize this run in 3 bullet points and suggest 2 next actions. "
         f"Run ID: {run_id}. Match score: {score}. Keep it concise."
     )
-    body = {"model": "llama3.1:8b-instruct", "prompt": prompt, "stream": False}
+    
+    # Using 'llama3' as confirmed by your 'ollama list' command
+    body = {
+        "model": "llama3", 
+        "prompt": prompt, 
+        "stream": False
+    }
+    
     try:
-        r = httpx.post("http://127.0.0.1:11434/api/generate", json=body, timeout=20)
+        # 30s timeout handles "waking up" larger models or slower starts
+        r = httpx.post(ollama_url, json=body, timeout=30.0)
+        
         if r.status_code == 200:
-            return {"status": "ok", "provider": "ollama", "text": r.json().get("response", "")}
+            return {
+                "status": "ok", 
+                "provider": "ollama", 
+                "text": r.json().get("response", ""),
+                "url_used": ollama_url
+            }
+        
+        return {
+            "status": "degraded", 
+            "provider": "ollama", 
+            "text": "", 
+            "error": f"HTTP {r.status_code} from {ollama_url}"
+        }
+        
     except Exception as e:
-        return {"status": "degraded", "provider": "ollama", "text": "", "error": str(e)}
-    return {"status": "degraded", "provider": "ollama", "text": "", "error": f"HTTP {r.status_code}"}
-
+        return {
+            "status": "degraded", 
+            "provider": "ollama", 
+            "text": "", 
+            "error": f"Connection failed to {ollama_url}: {str(e)}"
+        }
 
 
 
