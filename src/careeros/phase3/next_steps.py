@@ -380,7 +380,10 @@ def _ollama_summary(run_id: str, score: float) -> dict[str, Any]:
     try:
         # Increase timeout to 60s. Your Mac has 5.7GB RAM free, 
         # so loading a 4.7GB model will be slow the first time.
-        r = httpx.post(ollama_url, json=body, timeout=60.0)
+        # r = httpx.post(ollama_url, json=body, timeout=60.0)
+        # Using 127.0.0.1 bypasses the Mac 'localhost' IPv6 confusion
+        r = httpx.post("http://127.0.0.1:11434/api/generate", json=body, timeout=60)
+        
         
         if r.status_code == 200:
             return {
