@@ -4,6 +4,7 @@ import requests
 import pandas as pd
 import sys
 from pathlib import Path
+from urllib.parse import quote
 
 # 1. SETUP DIRECTORIES
 ROOT_DIR = Path(__file__).resolve().parents[2]
@@ -22,7 +23,7 @@ st.caption("Resume + Jobs → Rank → Grounded Artifacts → Guardrails → Exp
 
 # 3. DYNAMIC API ROUTING (Cloud-First Fix)
 # This looks for the secret you added in the Streamlit Dashboard.
-cloud_api_url = st.secrets.get("API_URL", "http://127.0.0.1:8000")
+cloud_api_url = st.secrets.get("API_URL") or st.secrets.get("BACKEND_URL") or "https://careeros-backend-d9sc.onrender.com"
 
 if "api_url" not in st.session_state:
     st.session_state["api_url"] = cloud_api_url
@@ -165,9 +166,62 @@ if st.button("Run P25 Automation from Uploaded Files"):
             r = requests.post(f"{api_url}/p25/automation/run_upload", files=files, data=data, timeout=120)
             if r.status_code == 200:
                 st.success("P25 automation completed successfully!")
-                st.json(r.json())
+                payload = r.json()
+                st.json(payload)
+                llm = payload.get("llm_summary", {})
+                if llm:
+                    st.info(f"LLM provider: {llm.get('provider', 'n/a')} | tier: {llm.get('tier', 'n/a')} | status: {llm.get('status', 'n/a')}")
+                paths = payload.get("paths", {})
+                if paths:
+                    st.markdown("### Open generated artifacts")
+                    for label, pth in paths.items():
+                        if pth:
+                            encoded = quote(str(pth), safe="")
+                            st.markdown(f"- **{label}**: [open]({api_url}/artifacts/open?path={encoded}) | [read]({api_url}/artifacts/read?path={encoded})")
             else:
                 st.error(f"P25 run failed ({r.status_code})")
                 st.write(r.text)
         except Exception as e:
             st.error(f"P25 run failed: {e}")
+
+st.header("Artifact Viewer")
+artifact_path = st.text_input("Artifact path (outputs/... or exports/...)", value="")
+if st.button("Open Artifact", key="btn_open_artifact") and artifact_path.strip():
+    encoded = quote(artifact_path.strip(), safe="")
+    st.markdown(f"[Open file]({api_url}/artifacts/open?path={encoded})")
+    try:
+        rr = httpx.get(f"{api_url}/artifacts/read", params={"path": artifact_path.strip()}, timeout=20)
+        st.json(rr.json())
+    except Exception as e:
+        st.error(f"Failed to read artifact: {e}")
+
+st.header("Feedback (User Testing)")
+fb_user_id = st.text_input("User ID", value="")
+fb_email = st.text_input("Email", value="")
+fb_run_id = st.text_input("Run ID", value="")
+fb_rating = st.slider("Rating", min_value=1, max_value=5, value=4)
+fb_category = st.selectbox("Feedback category", ["general", "ranking", "generation", "jobs", "ui", "bug"]) 
+fb_message = st.text_area("Feedback message", height=120)
+
+if st.button("Submit Feedback", key="btn_submit_feedback"):
+    payload = {
+        "user_id": fb_user_id or None,
+        "email": fb_email or None,
+        "run_id": fb_run_id or None,
+        "rating": int(fb_rating),
+        "category": fb_category,
+        "message": fb_message,
+    }
+    try:
+        r = httpx.post(f"{api_url}/feedback/submit", json=payload, timeout=20)
+        st.success("Feedback submitted")
+        st.json(r.json())
+    except Exception as e:
+        st.error(f"Failed to submit feedback: {e}")
+
+if st.button("Load Recent Feedback", key="btn_feedback_list"):
+    try:
+        r = httpx.get(f"{api_url}/feedback/list", params={"limit": 25}, timeout=20)
+        st.json(r.json())
+    except Exception as e:
+        st.error(f"Failed to load feedback: {e}")
