@@ -1,0 +1,362 @@
+CareerOS Capstone — Execution Master File (P1 → P12)
+
+Use this in any new chat to continue from the exact checkpoint.
+This file combines your P1→P7 summary + our P8→P12 build + a full demo proof sequence with exact output locations and verification commands.
+
+0) System goal (what we’re building)
+
+CareerOS is an evidence-grounded, agentic career workflow that takes:
+
+candidate intake + resume evidence
+
+multiple job posts
+
+…and produces:
+
+explainable matching + ranking
+
+job-specific application package artifacts
+
+guardrails that block unsupported claims
+
+exports (DOCX/PDF)
+
+apply tracking ledger + analytics funnel
+
+follow-up action queue + message drafts
+
+one-click orchestration runner (agent-ready spine)
+
+We built Phase 0 as a deterministic, versioned artifact pipeline (P1–P12) first, then we’ll layer agentic orchestration (L2/L3/L4) + MLflow/DVC afterward.
+
+1) No-confusion mapping rule
+
+P# = pipeline stages (implementation build order)
+
+Arch L# = architecture responsibility layers (from your diagram)
+
+A pipeline stage can map to multiple architecture layers.
+
+2) Repo/runtime state (what is already working now)
+
+✅ Python venv working
+✅ FastAPI backend runs via Uvicorn
+✅ Streamlit UI runs and calls backend
+✅ Artifacts persist to disk under outputs/ and exports/
+✅ outputs/ is gitignored
+✅ pytest is used for unit tests
+✅ Guardrails fixed to avoid false positives (no “thank/team/hiring” blocks)
+✅ Export deps installed: python-docx, reportlab
+✅ Dashboard deps installed: pandas
+✅ UI uses api_url = os.getenv("CAREEROS_API_URL", "http://127.0.0.1:8000")
+
+3) Pipeline layers summary (P1 → P12)
+P1 — Intake Bundle (User preferences → IntakeBundle artifact)
+
+Purpose: capture targeting constraints (roles/location/salary/work auth/remote) as a stable “contract”.
+Belongs to Arch: L1 Entry (UI/API).
+Inputs: Streamlit form fields.
+Output artifact:
+
+outputs/intake/intake_bundle_v1_<timestamp>.json
+Verified: Streamlit button creates file; path shown; file exists.
+
+P2 — Resume Parsing (Resume text → EvidenceProfile artifact)
+
+Purpose: build the “truth source” for what can be claimed.
+Belongs to Arch: L4 Agent behavior + supports L9 governance.
+Inputs: resume text (paste).
+Processing (Phase 0): deterministic extraction into skills/titles/domains.
+Output artifact:
+
+outputs/profile/profile_v1_<timestamp>.json
+Verified: file exists; skills populated.
+
+P3 — Job Ingestion (Job text → JobPost artifact)
+
+Purpose: normalize job descriptions for matching/ranking.
+Belongs to Arch: L4 Agent behavior.
+Inputs: job description text (paste).
+Processing: deterministic keyword extraction.
+Output artifact:
+
+outputs/jobs/job_post_v1_<timestamp>.json
+Verified: multiple job posts ingested and saved.
+
+P4 — Matching (EvidenceProfile + JobPost → MatchResult artifact)
+
+Purpose: explainably compute overlap/missing and score (0–100).
+Belongs to Arch: L3 Manager + L4 Agent.
+Inputs: latest profile (P2), one job post (P3).
+Processing: set compare + coverage score + rationale.
+Output artifact:
+
+outputs/matching/match_result_v1_<timestamp>.json
+Verified: score + overlap/missing returned and saved.
+
+P5 — Ranking (All jobs → RankedShortlist artifact)
+
+Purpose: choose Top-N jobs with reasons (decision output).
+Belongs to Arch: L3 Manager (Job Ops).
+Inputs: latest profile + all jobs.
+Processing: compute P4 per job, sort by score.
+Output artifact:
+
+outputs/ranking/shortlist_v1_<timestamp>.json
+Verified: Top-3 shortlist returned with scores, overlap, missing, reasons.
+
+P6 — Generation (Shortlist + Evidence → ApplicationPackage artifact)
+
+Purpose: create job-specific deliverables grounded in overlap skills.
+Belongs to Arch: L4 Agent behavior; later L8 Models/Memory.
+Inputs: shortlist + profile + referenced job.
+Processing (Phase 0): deterministic bullet generation + safe cover letter + QA stubs.
+Output artifact:
+
+exports/packages/application_package_v1_<jobhint>_<timestamp>.json
+Verified: package file exists with bullets + cover letter + QA stubs.
+
+P7 — Guardrails (Validate package → ValidationReport artifact)
+
+Purpose: prove governance: block unsupported claims (MVP requirement).
+Belongs to Arch: L9 Governance/Ops + L5 Human Gates.
+Inputs: profile (P2) + package (P6).
+Processing (Final Phase 0 rule GR001):
+
+only blocks when known tool/tech terms appear that are NOT in EvidenceProfile.skills
+
+avoids false blocks from common words
+Output artifact:
+
+outputs/guardrails/validation_report_v1_<timestamp>.json
+Verified: pass/blocked works; Snowflake blocks; normal prose doesn’t.
+
+P8 — Export + Apply Tracking (Validated Package → DOCX/PDF + lifecycle ledger)
+
+Purpose: produce submit-ready artifacts + track each application’s lifecycle.
+Belongs to Arch: L6 Execution Ops + L9 Governance.
+Inputs: package + validation report (must pass).
+Processing:
+
+gate export if blocked
+
+export docx/pdf
+
+write/append record to tracking ledger
+
+allow status updates (submitted/interview/offer/etc.)
+Outputs:
+
+exports/submissions/<application_id>_<job_hint>/application_package.docx
+
+exports/submissions/<application_id>_<job_hint>/application_package.pdf
+
+outputs/apply_tracking/applications_v1.jsonl
+Verified: exports created + status updated to submitted.
+
+P9 — Analytics Dashboard (Tracking ledger → funnel + list + drill-down)
+
+Purpose: product-level observability for apply ops funnel.
+Belongs to Arch: L7 Observability + supports L6/L9.
+Inputs: applications ledger JSONL.
+Outputs:
+
+API:
+
+GET /applications/metrics
+
+GET /applications/list?status=&limit=
+
+GET /applications/{application_id}
+
+UI: metrics + filtered DataFrame + drill-down
+Verified: filter works; table renders; drill-down works.
+
+P10 — Next Actions (Ledger → follow-up action queue)
+
+Purpose: deterministic ops automation (what to do next).
+Belongs to Arch: L6 + L7 + L9.
+Inputs: applications ledger.
+Rules: follow_up, prepare_interview, update_status, close_loop.
+Output artifact:
+
+outputs/followups/followups_v1.json
+API/UI: generate + load latest actions.
+Verified: actions generated tied to application_id; test exists.
+
+P11 — Notification Drafts (Action queue → email/linkedin drafts)
+
+Purpose: generate ready-to-copy communications (Phase 0 = no sending).
+Belongs to Arch: L6 + L7 + L9; later L5 approval.
+Inputs: followups queue + applications ledger.
+Output artifact:
+
+outputs/notifications/drafts_v1.json
+API/UI: build drafts + load drafts + open by draft_id.
+Verified: drafts generated; follow_up yields email + LinkedIn drafts; test exists.
+
+P12 — Orchestration Runner (One-click workflow: P6→P7→P8→P10→P11)
+
+Purpose: agent-ready workflow spine (Director behavior in Phase 0).
+Belongs to Arch: L3 Manager + L6 + L9 (interfaces with L4 later).
+Inputs: profile_path, job_path, overlap_skills, tracking_path.
+Processing: runs sequentially with strict gating:
+
+if P7 blocked → stop; no exports/actions/drafts
+
+if pass → completes downstream steps
+Output: run JSON summary (run_id, steps, artifact paths).
+Verified: block stops; pass completes.
+
+4) How to run the whole system (API + UI + tests)
+Install deps (if needed)
+source .venv/bin/activate
+python -m pip install -U pip
+python -m pip install pytest pandas python-docx reportlab
+
+Run tests (proof)
+PYTHONPATH=src pytest -q
+
+Run API
+PYTHONPATH=src uvicorn apps.api.main:app --reload --port 8000
+
+Run UI
+CAREEROS_API_URL=http://127.0.0.1:8000 streamlit run apps/ui/Home.py
+
+5) Demo proof sequence (P1 → P12) — two runs: PASS + BLOCK
+A) PASS run (happy path: full flow succeeds)
+
+In Streamlit:
+
+P1 Create Intake Bundle → show returned path
+
+P2 Build Profile (paste resume) → show profile path
+
+P3 Ingest 2–3 Jobs (paste job texts) → show job paths
+
+P4 Run Matching (for at least one job) → show match_result path + overlap/missing
+
+P5 Run Ranking → show shortlist path + ordered jobs
+
+P6 Generate Package (Top-1) → show application_package path
+
+P7 Validate → show validation report path with status: pass
+
+P8 Export → show docx/pdf paths + application_id; confirm created on disk
+
+P9 Dashboard → show funnel metrics + list filtered by submitted; drill-down by application_id
+
+P10 Generate Next Actions → show followups path + actions table
+
+P11 Build Drafts → show drafts path + open a draft_id
+
+P12 Orchestrator (optional in PASS demo) → show status=ok and step outputs
+
+PASS proof to screenshot:
+
+P7 report status: pass
+
+P8 docx/pdf exported folder
+
+P9 funnel + submitted row
+
+P10 actions table
+
+P11 draft opened with body text
+
+B) BLOCK run (governance proof: unsupported claim stops everything)
+
+Generate package (P6)
+
+Inject unsupported tool term (example: Snowflake) into package text OR ensure job/overlap forces the mention
+
+Run P7 Validate
+
+Expected:
+
+P7 status: blocked
+
+report includes unsupported_terms: ["snowflake"]
+
+P8 export should not proceed
+
+P12 orchestrator should stop at P7 and return blocked
+
+BLOCK proof to screenshot:
+
+validation report showing blocked + unsupported_terms
+
+confirm no new exports/submissions/<new_id> folder created after block attempt
+
+6) How to verify outputs on disk (quick commands)
+Latest profile (P2)
+ls -lt outputs/profile | head
+
+Latest jobs (P3)
+ls -lt outputs/jobs | head
+
+Latest match result (P4)
+ls -lt outputs/matching | head
+
+Latest shortlist (P5)
+ls -lt outputs/ranking | head
+
+Latest package (P6)
+ls -lt exports/packages | head
+
+Latest validation report (P7)
+ls -lt outputs/guardrails | head
+
+Latest submissions (P8)
+ls -lt exports/submissions | head
+
+Tracking ledger (P8)
+tail -n 3 outputs/apply_tracking/applications_v1.jsonl
+
+Followups queue (P10)
+cat outputs/followups/followups_v1.json | head -n 80
+
+Drafts bundle (P11)
+cat outputs/notifications/drafts_v1.json | head -n 80
+
+7) Where to see “logs”
+
+You mentioned structured logs exist at:
+
+logs/careeros.jsonl
+
+To show latest log events:
+
+tail -n 30 logs/careeros.jsonl
+
+
+During demo also show:
+
+API terminal logs (uvicorn request logs)
+
+Streamlit terminal logs (button-triggered requests)
+
+8) Current handoff checkpoint (where the next chat continues)
+
+✅ Phase 0 pipeline is complete through P12 with:
+
+deterministic artifacts
+
+governance gating
+
+exports + tracking
+
+analytics dashboard
+
+actions + drafts
+
+orchestration runner
+
+Next work (Phase 1): start building Agentic Architecture layers:
+
+L2 state/memory primitives
+
+L3 manager/planner
+
+L4 worker agents
+Then integrate MLflow + DVC once the agentic wiring is stable.
