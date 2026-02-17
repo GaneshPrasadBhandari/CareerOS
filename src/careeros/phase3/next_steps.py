@@ -356,34 +356,10 @@ def connector_ingest(payload: dict[str, Any]) -> dict[str, Any]:
 #         return {"status": "degraded", "error": str(e)}
 
 
-import socket
+from careeros.orchestration.router import generate_summary_with_fallback
 
 def _ollama_summary(run_id: str, score: float) -> dict[str, Any]:
-    # 1. Force use of IPv4 loopback
-    ip = "127.0.0.1"
-    port = 11434
-    url = f"http://{ip}:{port}/api/generate"
-    
-    # 2. Pre-check: Is the door even open?
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-        s.settimeout(2)
-        if s.connect_ex((ip, port)) != 0:
-            return {"status": "degraded", "error": f"Ollama is not responding on {ip}:{port}. Run 'ollama serve' in terminal."}
-
-    body = {
-        "model": "llama3", 
-        "prompt": f"Write 2 lines summarizing Alex Rivera's 100% match for run {run_id}.",
-        "stream": False
-    }
-    
-    try:
-        # 3. Use a standard Client to avoid proxy interference
-        with httpx.Client(transport=httpx.HTTPTransport(local_address="0.0.0.0")) as client:
-            r = client.post(url, json=body, timeout=60.0)
-            if r.status_code == 200:
-                return {"status": "ok", "provider": "ollama", "text": r.json().get("response", "")}
-    except Exception as e:
-        return {"status": "degraded", "error": f"Bridge error: {str(e)}"}
+    return generate_summary_with_fallback(run_id=run_id, score=score)
 
 
 

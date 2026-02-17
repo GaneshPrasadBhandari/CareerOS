@@ -13,7 +13,7 @@ import importlib.util
 from typing import Optional
 
 from fastapi import FastAPI, HTTPException, Query, Request, UploadFile, File, Form
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, FileResponse
 from pydantic import BaseModel
 
 
@@ -118,6 +118,7 @@ from careeros.phase3.next_steps import (
 )
 from careeros.phase3.evaluator_v2 import evaluate_run_v2, latest_eval_v2, EvalWeights
 from careeros.phase3.system_checks import run_system_health_checks
+from careeros.feedback.service import append_feedback, append_employer_signal, list_feedback
 
 
 # ------------------------------------------------------------------------------
@@ -894,6 +895,56 @@ def p25_automation_trace_latest(run_id: str | None = None):
 @app.get("/p25/system/health")
 def p25_system_health():
     return run_system_health_checks()
+
+
+
+SAFE_ARTIFACT_ROOTS = [
+    Path("outputs").resolve(),
+    Path("exports").resolve(),
+    Path("data").resolve(),
+]
+
+
+def _safe_artifact_path(path: str) -> Path:
+    candidate = Path(path).expanduser().resolve()
+    for root in SAFE_ARTIFACT_ROOTS:
+        if root in candidate.parents or candidate == root:
+            return candidate
+    raise HTTPException(status_code=400, detail="Path is outside allowed artifact roots")
+
+
+@app.get("/artifacts/open")
+def artifacts_open(path: str):
+    fp = _safe_artifact_path(path)
+    if not fp.exists() or not fp.is_file():
+        raise HTTPException(status_code=404, detail="Artifact file not found")
+    return FileResponse(fp)
+
+
+@app.get("/artifacts/read")
+def artifacts_read(path: str):
+    fp = _safe_artifact_path(path)
+    if not fp.exists() or not fp.is_file():
+        raise HTTPException(status_code=404, detail="Artifact file not found")
+    if fp.suffix.lower() in {".json", ".md", ".txt", ".log", ".jsonl"}:
+        return {"status": "ok", "path": str(fp), "content": fp.read_text(encoding="utf-8", errors="ignore")}
+    return {"status": "ok", "path": str(fp), "message": "Use /artifacts/open for binary formats"}
+
+
+@app.post("/feedback/submit")
+def feedback_submit(payload: dict):
+    return append_feedback(payload)
+
+
+@app.get("/feedback/list")
+def feedback_list(limit: int = 100):
+    return list_feedback(limit=limit)
+
+
+@app.post("/feedback/employer_signal")
+def feedback_employer_signal(payload: dict):
+    return append_employer_signal(payload)
+
 
 @app.get("/phases/status")
 def phases_status():
