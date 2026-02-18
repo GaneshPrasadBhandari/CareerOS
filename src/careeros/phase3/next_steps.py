@@ -11,7 +11,7 @@ import os
 import httpx
 
 from careeros.core.privacy import redact_pii, privacy_metadata
-from careeros.integrations.job_boards.sources import discover_job_urls
+from careeros.integrations.job_boards.sources import discover_job_urls_for_roles
 
 from careeros.generation.service import build_package, write_application_package
 from careeros.guardrails.service import validate_package_against_evidence, write_validation_report
@@ -33,6 +33,37 @@ def _latest(pattern: str) -> str | None:
     return str(max(files, key=lambda f: Path(f).stat().st_mtime))
 
 
+
+
+def _resume_structure_signals(text: str) -> dict[str, int]:
+    t = text or ""
+    return {
+        "skills_mentions": len(re.findall(r"\bskills?\b", t, re.IGNORECASE)),
+        "experience_mentions": len(re.findall(r"\bexperience\b", t, re.IGNORECASE)),
+        "education_mentions": len(re.findall(r"\beducation\b", t, re.IGNORECASE)),
+        "project_mentions": len(re.findall(r"\bprojects?\b", t, re.IGNORECASE)),
+        "year_tokens": len(re.findall(r"\b(19|20)\d{2}\b", t)),
+    }
+
+
+def _hitl_decision(*, match_score: float, guardrails_status: str, parser_skills: int) -> dict[str, Any]:
+    confidence = max(0.0, min(100.0, round((match_score * 70.0) + min(parser_skills, 20) * 1.5 + (15.0 if guardrails_status == "pass" else 0.0), 2)))
+    reasons: list[str] = []
+    if match_score < 0.6:
+        reasons.append("Low profile-job match score")
+    if parser_skills < 5:
+        reasons.append("Limited extracted skill evidence")
+    if guardrails_status != "pass":
+        reasons.append(f"Guardrails status is {guardrails_status}")
+    approval_required = confidence < 75.0 or guardrails_status != "pass"
+    if not reasons:
+        reasons.append("Confidence and guardrails checks are healthy")
+    return {
+        "approval_required": approval_required,
+        "confidence_percent": confidence,
+        "reasons": reasons,
+        "why": "Human review is required when confidence is low or guardrails are not fully passing.",
+    }
 def _read_resume_text(payload: dict[str, Any]) -> tuple[str, list[str]]:
     notes: list[str] = []
     source_type = str(payload.get("source_type", "inline")).lower()
@@ -161,11 +192,7 @@ def parser_extract(payload: dict[str, Any]) -> dict[str, Any]:
         text = redact_pii(text)
         notes.append("PII redaction applied before artifact persistence")
     skills = extract_skills(original_text) if original_text else []
-    section_hits = {
-        "skills": int(bool(re.search(r"\bskills\b", text, re.IGNORECASE))),
-        "experience": int(bool(re.search(r"\bexperience\b", text, re.IGNORECASE))),
-        "education": int(bool(re.search(r"\beducation\b", text, re.IGNORECASE))),
-    }
+    section_hits = _resume_structure_signals(text)
 
     out_dir = Path("outputs/phase3/parser")
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -417,11 +444,21 @@ def p25_automation_run(payload: dict[str, Any]) -> dict[str, Any]:
     jobs_payload = payload.get("jobs") or {}
     ingested_jobs: list[str] = []
 
+    discovered: dict[str, Any] = {"status": "idle", "urls": []}
     if jobs_payload.get("auto_discover"):
         pref = jobs_payload.get("preferences") or {}
-        role = str(pref.get("role") or (profile.titles[0] if profile.titles else "Software Engineer"))
+        roles = pref.get("roles") or []
+        if not roles and pref.get("role"):
+            roles = [pref.get("role")]
+        if not roles and profile.titles:
+            roles = profile.titles[:3]
         location = str(pref.get("location") or "USA")
-        discovered = discover_job_urls(role=role, location=location, max_per_source=int(jobs_payload.get("max_per_source", 2)))
+        discovered = discover_job_urls_for_roles(
+            roles=roles,
+            location=location,
+            max_per_source=int(jobs_payload.get("max_per_source", 2)),
+            daily_limit=int(jobs_payload.get("daily_limit", 20)),
+        )
         jobs_payload.setdefault("urls", [])
         jobs_payload["urls"] = list(dict.fromkeys((jobs_payload.get("urls") or []) + discovered.get("urls", [])))
 
@@ -478,6 +515,7 @@ def p25_automation_run(payload: dict[str, Any]) -> dict[str, Any]:
     validation_path = str(write_validation_report(report))
 
     llm_summary = _ollama_summary(run_id=run_id, score=match.score)
+    hitl = _hitl_decision(match_score=match.score, guardrails_status=report.status, parser_skills=len(parse_result.get("skills", [])))
 
     trace = {
         "run_id": run_id,
@@ -490,8 +528,8 @@ def p25_automation_run(payload: dict[str, Any]) -> dict[str, Any]:
             },
             "L3_jobs": {
                 "agent": "connector",
-                "input": {"job_text_count": len(jobs_payload.get("job_texts") or []), "urls": jobs_payload.get("urls", [])},
-                "output": {"jobs_ingested": len(ingested_jobs), "first_job_path": first_job_path},
+                "input": {"job_text_count": len(jobs_payload.get("job_texts") or []), "urls": jobs_payload.get("urls", []), "auto_discover": bool(jobs_payload.get("auto_discover"))},
+                "output": {"jobs_ingested": len(ingested_jobs), "first_job_path": first_job_path, "discovered_urls": len(discovered.get("urls", []))},
                 "next_layer": "L4_matching",
             },
             "L4_matching": {
@@ -533,6 +571,7 @@ def p25_automation_run(payload: dict[str, Any]) -> dict[str, Any]:
         "run_id": run_id,
         "parser": {k: v for k, v in parse_result.items() if k != "extracted_text"},
         "connector": {k: v for k, v in conn_result.items() if k != "items"},
+        "discovery": discovered,
         "paths": {
             "profile_path": profile_path,
             "first_job_path": first_job_path,
@@ -549,5 +588,6 @@ def p25_automation_run(payload: dict[str, Any]) -> dict[str, Any]:
             "jobs_ingested": len(ingested_jobs),
         },
         "llm_summary": llm_summary,
+        "hitl": hitl,
         "trace": trace,
     }

@@ -229,6 +229,29 @@ def health():
     return {"status": "ok", "service": "CareerOS API", "run_id": run_id}
 
 
+
+
+@app.get("/system/storage/status")
+def system_storage_status():
+    roots = {
+        "outputs": str(Path("outputs").resolve()),
+        "exports": str(Path("exports").resolve()),
+        "data": str(Path("data").resolve()),
+    }
+    vector_backend = os.getenv("VECTOR_DB", "none")
+    vector_info = {
+        "enabled": vector_backend.lower() != "none",
+        "backend": vector_backend,
+        "default": "none (file-based evidence retrieval)",
+        "note": "Set VECTOR_DB=chroma or qdrant and wire embeddings for semantic retrieval.",
+    }
+    return {
+        "status": "ok",
+        "storage": roots,
+        "database": {"default": str(Path("mlflow.db").resolve())},
+        "vector_db": vector_info,
+    }
+
 @app.get("/version")
 def version():
     run_id = new_run_id()
