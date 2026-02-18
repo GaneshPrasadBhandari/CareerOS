@@ -461,6 +461,8 @@ def p25_automation_run(payload: dict[str, Any]) -> dict[str, Any]:
         )
         jobs_payload.setdefault("urls", [])
         jobs_payload["urls"] = list(dict.fromkeys((jobs_payload.get("urls") or []) + discovered.get("urls", [])))
+        jobs_payload.setdefault("job_texts", [])
+        jobs_payload["job_texts"] = list(jobs_payload.get("job_texts") or []) + list(discovered.get("job_texts") or [])
 
     for jt in jobs_payload.get("job_texts", []):
         if isinstance(jt, str) and jt.strip():

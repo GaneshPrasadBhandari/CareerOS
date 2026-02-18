@@ -898,9 +898,44 @@ if _MULTIPART_AVAILABLE:
             "jobs": {"job_texts": [job_text]},
         }
         return p25_automation_run(payload)
+
+    @app.post("/p25/automation/run_upload_auto")
+    def p25_automation_run_upload_auto(
+        resume_file: UploadFile = File(...),
+        candidate_name: str | None = Form(default=None),
+        run_id: str | None = Form(default=None),
+        top_n: int = Form(default=5),
+        roles_csv: str = Form(default="ML Engineer,Backend Engineer,GenAI Engineer"),
+        location: str = Form(default="USA"),
+        daily_limit: int = Form(default=20),
+        private_mode: bool = Form(default=True),
+    ):
+        resume_text = _extract_upload_text(resume_file)
+        roles = [x.strip() for x in roles_csv.split(",") if x.strip()]
+        payload = {
+            "run_id": run_id,
+            "candidate_name": candidate_name,
+            "top_n": top_n,
+            "privacy": {"private_mode": bool(private_mode)},
+            "resume": {"source_type": "inline", "text": resume_text},
+            "jobs": {
+                "auto_discover": True,
+                "daily_limit": int(daily_limit),
+                "max_per_source": 2,
+                "preferences": {"roles": roles, "location": location},
+            },
+        }
+        return p25_automation_run(payload)
 else:
     @app.post("/p25/automation/run_upload")
     def p25_automation_run_upload_unavailable():
+        return {
+            "status": "error",
+            "message": "python-multipart is not installed. Install with: pip install python-multipart",
+        }
+
+    @app.post("/p25/automation/run_upload_auto")
+    def p25_automation_run_upload_auto_unavailable():
         return {
             "status": "error",
             "message": "python-multipart is not installed. Install with: pip install python-multipart",

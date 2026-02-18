@@ -203,34 +203,53 @@ auto_top_n = st.number_input("Top jobs to rank for tailored output", min_value=1
 auto_private_mode = st.checkbox("Private mode (PII redaction in persisted artifacts)", value=True, key="auto_private_mode")
 auto_resume_source_type = st.selectbox("Resume source type", ["inline", "linkedin_url", "website"], index=0, key="auto_resume_source")
 auto_resume_input = st.text_area("Resume text or LinkedIn/website URL", height=140, key="auto_resume_input")
+auto_resume_upload = st.file_uploader("Or upload resume (pdf/docx/txt)", type=["txt", "pdf", "docx"], key="auto_resume_upload")
 
 if st.button("Run Daily Auto-Discovery + Tailored Generation", key="btn_p25_daily"):
-    if not auto_resume_input.strip():
+    if not auto_resume_input.strip() and not auto_resume_upload:
         st.warning("Please provide resume text or URL.")
     else:
-        resume_payload = {"source_type": auto_resume_source_type}
-        if auto_resume_source_type == "inline":
-            resume_payload["text"] = auto_resume_input.strip()
-        else:
-            resume_payload["source_url"] = auto_resume_input.strip()
-
-        payload = {
-            "candidate_name": p25_candidate or None,
-            "top_n": int(auto_top_n),
-            "privacy": {"private_mode": bool(auto_private_mode)},
-            "resume": resume_payload,
-            "jobs": {
-                "auto_discover": True,
-                "daily_limit": int(auto_daily_limit),
-                "max_per_source": 2,
-                "preferences": {
-                    "roles": auto_role_choices,
-                    "location": auto_location,
-                },
-            },
-        }
         try:
-            r = httpx.post(f"{api_url}/p25/automation/run", json=payload, timeout=180)
+            if auto_resume_upload is not None:
+                files = {
+                    "resume_file": (
+                        auto_resume_upload.name,
+                        auto_resume_upload.getvalue(),
+                        auto_resume_upload.type or "application/octet-stream",
+                    )
+                }
+                data = {
+                    "candidate_name": p25_candidate,
+                    "top_n": int(auto_top_n),
+                    "roles_csv": ",".join(auto_role_choices),
+                    "location": auto_location,
+                    "daily_limit": int(auto_daily_limit),
+                    "private_mode": str(bool(auto_private_mode)).lower(),
+                }
+                r = requests.post(f"{api_url}/p25/automation/run_upload_auto", files=files, data=data, timeout=240)
+            else:
+                resume_payload = {"source_type": auto_resume_source_type}
+                if auto_resume_source_type == "inline":
+                    resume_payload["text"] = auto_resume_input.strip()
+                else:
+                    resume_payload["source_url"] = auto_resume_input.strip()
+
+                payload = {
+                    "candidate_name": p25_candidate or None,
+                    "top_n": int(auto_top_n),
+                    "privacy": {"private_mode": bool(auto_private_mode)},
+                    "resume": resume_payload,
+                    "jobs": {
+                        "auto_discover": True,
+                        "daily_limit": int(auto_daily_limit),
+                        "max_per_source": 2,
+                        "preferences": {
+                            "roles": auto_role_choices,
+                            "location": auto_location,
+                        },
+                    },
+                }
+                r = httpx.post(f"{api_url}/p25/automation/run", json=payload, timeout=240)
             st.json(r.json())
             if r.status_code == 200:
                 body = r.json()
@@ -247,6 +266,32 @@ if st.button("Run Daily Auto-Discovery + Tailored Generation", key="btn_p25_dail
                         st.write(f"- {reason}")
         except Exception as e:
             st.error(f"Daily automation failed: {e}")
+
+
+if st.button("Run P1→P25 Quick Pipeline (One Click)", key="btn_p1_p25_quick"):
+    if not auto_resume_input.strip() and not auto_resume_upload:
+        st.warning("Please provide resume text/URL or upload resume first.")
+    else:
+        try:
+            intake_payload = {
+                "version": "v1",
+                "candidate_name": p25_candidate or None,
+                "target_roles": auto_role_choices,
+                "constraints": {
+                    "location": auto_location,
+                    "remote_only": True,
+                    "salary_min": 100000,
+                    "salary_max": 250000,
+                    "work_auth": None,
+                    "relocation_ok": False,
+                },
+            }
+            intake_resp = httpx.post(f"{api_url}/intake", json=intake_payload, timeout=30)
+            st.write("P1 intake:", intake_resp.json())
+            st.write("Running P25 automation...")
+            st.info("Use 'Run Daily Auto-Discovery + Tailored Generation' result above for full P25 artifact outputs.")
+        except Exception as e:
+            st.error(f"Quick pipeline failed: {e}")
 
 if st.button("Check Storage/DB/Vector Status", key="btn_storage_status"):
     try:
