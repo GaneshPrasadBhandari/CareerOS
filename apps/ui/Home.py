@@ -13,7 +13,11 @@ st.caption("L1 Intake → L2 Parse → L3 Discover/Ingest Jobs → L4 Match → 
 
 
 def _api_url() -> str:
-    cloud_api_url = st.secrets.get("API_URL") or st.secrets.get("BACKEND_URL") or "https://careeros-backend-d9sc.onrender.com"
+    cloud_api_url = "https://careeros-backend-d9sc.onrender.com"
+    try:
+        cloud_api_url = st.secrets.get("API_URL") or st.secrets.get("BACKEND_URL") or cloud_api_url
+    except Exception:
+        pass
     if "api_url" not in st.session_state:
         st.session_state["api_url"] = cloud_api_url
     return st.session_state["api_url"]
@@ -60,6 +64,20 @@ def _safe_json(resp: requests.Response | httpx.Response):
         return resp.json()
     except Exception:
         return {"status": "error", "message": resp.text}
+
+
+def _sync_l1_to_l2(name: str, resume_text: str) -> None:
+    if name and not st.session_state.get("l2_name"):
+        st.session_state["l2_name"] = name
+    if resume_text:
+        st.session_state["l2_resume"] = resume_text
+
+
+def _sync_l1_to_pipeline(name: str, resume_text: str) -> None:
+    if name and not st.session_state.get("p25_candidate"):
+        st.session_state["p25_candidate"] = name
+    if resume_text:
+        st.session_state["p25_resume_inline"] = resume_text
 
 
 with st.sidebar:
@@ -128,8 +146,12 @@ with l1_tab:
                     "resume_text": resume_text,
                 }
                 r = httpx.post(f"{api_url}/intake/bootstrap", json=payload, timeout=30)
+                body = _safe_json(r)
+                _sync_l1_to_l2(name=name, resume_text=resume_text)
+                _sync_l1_to_pipeline(name=name, resume_text=resume_text)
                 st.success("L1 + L2 bootstrap completed")
-                st.json(_safe_json(r))
+                st.info("L2 tab has been prefilled from your L1 intake resume.")
+                st.json(body)
             else:
                 payload = {
                     "version": "v1",
@@ -152,8 +174,16 @@ with l1_tab:
 
 with l2_tab:
     st.subheader("L2 Resume Parsing")
+    st.caption("If you uploaded/pasted resume in L1, fields here are auto-filled.")
     c_name = st.text_input("Candidate Name", key="l2_name")
     c_resume = st.text_area("Resume Text", height=220, key="l2_resume")
+    if st.button("Use latest L1 resume", key="l2_use_l1"):
+        l1_text = (st.session_state.get("l1_resume_text") or "").strip()
+        if not l1_text:
+            l1_upload = st.session_state.get("l1_up")
+            l1_text = _upload_to_text(l1_upload)
+        _sync_l1_to_l2(name=st.session_state.get("l1_name", ""), resume_text=l1_text)
+        st.success("L2 fields updated from L1 intake.")
     if st.button("Build Evidence Profile"):
         try:
             r = httpx.post(f"{api_url}/profile", json={"candidate_name": c_name or None, "resume_text": c_resume}, timeout=30)
@@ -167,14 +197,44 @@ with l2_tab:
 
 with l3_tab:
     st.subheader("L3 Job Ingestion")
-    url = st.text_input("Job URL", key="l3_url")
-    job_text = st.text_area("Job Description", height=220, key="l3_text")
-    if st.button("Ingest Job"):
-        try:
-            r = httpx.post(f"{api_url}/jobs/ingest", json={"url": url or None, "job_text": job_text}, timeout=30)
-            st.json(_safe_json(r))
-        except Exception as e:
-            st.error(str(e))
+    st.caption("Automatic discovery is enabled for 8 job sources (LinkedIn, Indeed, Wellfound, Dice, BuiltIn, Glassdoor, ZipRecruiter, USAJobs).")
+
+    manual_mode = st.toggle("Manual single-job ingest", value=False, key="l3_manual")
+    if manual_mode:
+        url = st.text_input("Job URL", key="l3_url")
+        job_text = st.text_area("Job Description", height=220, key="l3_text")
+        if st.button("Ingest Job"):
+            try:
+                r = httpx.post(f"{api_url}/jobs/ingest", json={"url": url or None, "job_text": job_text}, timeout=30)
+                st.json(_safe_json(r))
+            except Exception as e:
+                st.error(str(e))
+    else:
+        roles_default = st.session_state.get("l1_roles", "ML Engineer, Backend Engineer")
+        auto_roles = st.text_input("Target roles for auto-discovery (comma-separated)", value=roles_default, key="l3_roles")
+        auto_location = st.text_input("Location", value=st.session_state.get("l1_loc", "USA"), key="l3_loc")
+        c1, c2 = st.columns(2)
+        with c1:
+            max_per_source = st.number_input("Max jobs/source", min_value=1, max_value=5, value=2, key="l3_mps")
+        with c2:
+            daily_limit = st.number_input("Daily ingest cap", min_value=1, max_value=60, value=20, key="l3_daily")
+
+        if st.button("Auto-discover + ingest jobs", key="l3_auto"):
+            try:
+                payload = {
+                    "roles": [r.strip() for r in auto_roles.split(",") if r.strip()],
+                    "location": auto_location,
+                    "max_per_source": int(max_per_source),
+                    "daily_limit": int(daily_limit),
+                    "timeout_s": 10,
+                }
+                r = httpx.post(f"{api_url}/jobs/discover_ingest", json=payload, timeout=120)
+                body = _safe_json(r)
+                st.json(body)
+                if isinstance(body, dict) and body.get("job_paths"):
+                    st.success(f"Ingested {len(body['job_paths'])} jobs automatically.")
+            except Exception as e:
+                st.error(str(e))
 
 with pipeline_tab:
     st.subheader("One-Click Full Automation (L1→L10)")
