@@ -201,18 +201,20 @@ def validate_package_against_evidence(
     unsupported = sorted(unsupported_set)
     findings: list[ValidationFinding] = []
     
-    # --- THE KEY CHANGE FOR TANISH/SITA ---
-    # We change status to "pass" even if there are unsupported terms, 
-    # but we add a warning finding so the user can review it.
-    status = "pass" 
-    
+    unsupported_ratio = (len(unsupported) / max(len(watchlist), 1))
+    should_block = len(unsupported) >= 2 or unsupported_ratio > 0.08
+    status = "blocked" if should_block else "pass"
+
     if unsupported:
-        # Instead of 'block', we call it 'warning'
         findings.append(
             ValidationFinding(
-                severity="warning", 
+                severity="block" if should_block else "warn",
                 rule_id="GR_DYNAMIC_001",
-                message="AI suggested skills not explicitly in your profile. Please review for accuracy.",
+                message=(
+                    "Generated package includes unsupported technical claims."
+                    if should_block
+                    else "Generated package includes a minor unsupported technical claim."
+                ),
                 unsupported_terms=unsupported,
                 evidence_reference={t: "not_in_profile" for t in unsupported},
             )

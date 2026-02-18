@@ -11,7 +11,7 @@ import os
 import httpx
 
 from careeros.core.privacy import redact_pii, privacy_metadata
-from careeros.integrations.job_boards.sources import discover_job_urls_for_roles
+from careeros.integrations.job_boards.sources import discover_job_urls_for_roles, fetch_job_page_text
 
 from careeros.generation.service import build_package, write_application_package
 from careeros.guardrails.service import validate_package_against_evidence, write_validation_report
@@ -20,6 +20,7 @@ from careeros.matching.service import compute_match, write_match_result
 from careeros.parsing.schema import EvidenceProfile
 from careeros.parsing.service import build_profile_from_text, extract_skills, write_profile
 from careeros.ranking.service import rank_all_jobs, write_shortlist
+from careeros.evidence.vector_store import VectorRecord, index_records, semantic_rank_jobs
 
 
 def _stamp() -> str:
@@ -55,7 +56,11 @@ def _hitl_decision(*, match_score: float, guardrails_status: str, parser_skills:
         reasons.append("Limited extracted skill evidence")
     if guardrails_status != "pass":
         reasons.append(f"Guardrails status is {guardrails_status}")
-    approval_required = confidence < 75.0 or guardrails_status != "pass"
+    # Hard gate: any <40% match requires human approval, even if guardrails pass.
+    below_min_match = match_score < 0.4
+    if below_min_match:
+        reasons.append("Match score below minimum threshold (40%)")
+    approval_required = confidence < 75.0 or guardrails_status != "pass" or below_min_match
     if not reasons:
         reasons.append("Confidence and guardrails checks are healthy")
     return {
@@ -275,13 +280,18 @@ def connector_ingest(payload: dict[str, Any]) -> dict[str, Any]:
     errors: list[str] = []
 
     for url in urls:
-        try:
-            r = httpx.get(url, timeout=timeout_s, follow_redirects=True)
-            r.raise_for_status()
-            txt = _html_to_text(r.text)
-            items.append({"url": url, "text": txt[:12000], "char_count": len(txt)})
-        except Exception as e:
-            errors.append(f"{url}: {e}")
+        fetched = fetch_job_page_text(url=url, timeout_s=timeout_s)
+        txt_raw = str(fetched.get("text") or "")
+        txt = _html_to_text(txt_raw)
+        if txt:
+            items.append({
+                "url": url,
+                "text": txt[:12000],
+                "char_count": len(txt),
+                "fetch_notes": fetched.get("notes", []),
+            })
+        else:
+            errors.append(f"{url}: {' | '.join(fetched.get('notes', [])) or 'no_text_extracted'}")
 
     out_dir = Path("outputs/phase3/connectors")
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -493,6 +503,30 @@ def p25_automation_run(payload: dict[str, Any]) -> dict[str, Any]:
     shortlist = rank_all_jobs(profile_path=profile_path, top_n=top_n, run_id=run_id, job_paths=ingested_jobs)
     shortlist_path = str(write_shortlist(shortlist))
 
+    job_rows: list[dict[str, Any]] = []
+    for jp in ingested_jobs:
+        raw = json.loads(Path(jp).read_text(encoding="utf-8"))
+        job_rows.append({"job_path": jp, "raw_text": raw.get("raw_text", ""), "url": raw.get("url")})
+
+    semantic = semantic_rank_jobs(resume_text=resume_text, jobs=job_rows)
+    sem_map = {j["job_path"]: j["semantic_similarity"] for j in semantic.get("jobs", [])}
+
+    vector_index = index_records(
+        run_id=run_id,
+        records=[
+            VectorRecord(item_id="resume", item_type="resume", text=resume_text, metadata={"candidate_name": candidate_name}),
+            *[
+                VectorRecord(
+                    item_id=str(i + 1),
+                    item_type="job",
+                    text=row.get("raw_text", ""),
+                    metadata={"job_path": row["job_path"], "url": row.get("url")},
+                )
+                for i, row in enumerate(job_rows)
+            ],
+        ],
+    )
+
     top_item = shortlist.items[0]
     top_job_path = top_item.job_path
     top_job_raw = json.loads(Path(top_job_path).read_text(encoding="utf-8"))
@@ -588,6 +622,13 @@ def p25_automation_run(payload: dict[str, Any]) -> dict[str, Any]:
             "ranked_items": len(shortlist.items),
             "guardrails_status": report.status,
             "jobs_ingested": len(ingested_jobs),
+            "semantic_top_similarity": max(sem_map.values()) if sem_map else 0.0,
+            "embedding_backend": semantic.get("embedding_backend", "hash"),
+        },
+        "vector_store": vector_index,
+        "semantic_ranking": {
+            "weight": semantic.get("weight", 0.35),
+            "top_jobs": semantic.get("jobs", [])[:top_n],
         },
         "llm_summary": llm_summary,
         "hitl": hitl,
