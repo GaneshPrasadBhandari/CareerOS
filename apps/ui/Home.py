@@ -23,19 +23,39 @@ def _api_url() -> str:
     return st.session_state["api_url"]
 
 
+
+
+def _extract_pdf_text(raw: bytes) -> str:
+    try:
+        from pypdf import PdfReader
+
+        reader = PdfReader(io.BytesIO(raw))
+        txt = "\n".join((pg.extract_text() or "") for pg in reader.pages).strip()
+        if txt:
+            return txt
+    except Exception:
+        pass
+
+    try:
+        import fitz  # pymupdf
+
+        doc = fitz.open(stream=raw, filetype="pdf")
+        txt = "\n".join(page.get_text("text") for page in doc).strip()
+        if txt:
+            return txt
+    except Exception:
+        pass
+
+    return ""
+
+
 def _upload_to_text(uploaded_file) -> str:
     if uploaded_file is None:
         return ""
     name = (uploaded_file.name or "").lower()
     raw = uploaded_file.getvalue()
     if name.endswith(".pdf"):
-        try:
-            from pypdf import PdfReader
-
-            reader = PdfReader(io.BytesIO(raw))
-            return "\n".join((p.extract_text() or "") for p in reader.pages).strip()
-        except Exception:
-            return raw.decode("utf-8", errors="ignore").strip()
+        return _extract_pdf_text(raw)
     if name.endswith(".docx"):
         try:
             from docx import Document
@@ -59,6 +79,39 @@ def _upload_to_text(uploaded_file) -> str:
     return raw.decode("utf-8", errors="ignore").strip()
 
 
+
+
+def _render_layer_timeline(body: dict) -> None:
+    """Render layer-by-layer automation output for run review/evaluation."""
+    trace_layers = ((body or {}).get("trace") or {}).get("layers") or {}
+    if not trace_layers:
+        st.info("No layer trace found in response.")
+        return
+
+    order = [
+        ("L2_parsing", "Resume Parser"),
+        ("L3_jobs", "Job Discovery/Connector"),
+        ("L4_matching", "Matcher"),
+        ("L5_ranking", "Ranker"),
+        ("L6_generation", "Generator"),
+        ("L7_guardrails", "Guardrails"),
+        ("L8_summary", "LLM Summary"),
+    ]
+
+    st.markdown("### Layer-by-layer execution")
+    for layer_key, label in order:
+        node = trace_layers.get(layer_key)
+        if not node:
+            continue
+        with st.expander(f"{layer_key}: {label}", expanded=False):
+            st.write(f"**Agent:** {node.get('agent', 'n/a')}")
+            st.write(f"**Next:** {node.get('next_layer', 'n/a')}")
+            st.markdown("**Input**")
+            st.json(node.get("input", {}))
+            st.markdown("**Output**")
+            st.json(node.get("output", {}))
+
+
 def _safe_json(resp: requests.Response | httpx.Response):
     try:
         return resp.json()
@@ -66,19 +119,22 @@ def _safe_json(resp: requests.Response | httpx.Response):
         return {"status": "error", "message": resp.text}
 
 
-def _sync_l1_to_l2(name: str, resume_text: str) -> None:
-    if name and not st.session_state.get("l2_name"):
-        st.session_state["l2_name"] = name
-    if resume_text:
-        st.session_state["l2_resume"] = resume_text
+def _queue_l1_sync(name: str, resume_text: str) -> None:
+    st.session_state["_pending_sync_name"] = name or ""
+    st.session_state["_pending_sync_resume"] = resume_text or ""
+    st.session_state["_pending_sync_apply"] = True
 
 
-def _sync_l1_to_pipeline(name: str, resume_text: str) -> None:
-    if name and not st.session_state.get("p25_candidate"):
-        st.session_state["p25_candidate"] = name
-    if resume_text:
-        st.session_state["p25_resume_inline"] = resume_text
-
+if st.session_state.get("_pending_sync_apply"):
+    pending_name = str(st.session_state.get("_pending_sync_name") or "")
+    pending_resume = str(st.session_state.get("_pending_sync_resume") or "")
+    if pending_name:
+        st.session_state["l2_name"] = pending_name
+        st.session_state["p25_candidate"] = pending_name
+    if pending_resume:
+        st.session_state["l2_resume"] = pending_resume
+        st.session_state["p25_resume_inline"] = pending_resume
+    st.session_state["_pending_sync_apply"] = False
 
 with st.sidebar:
     st.header("System")
@@ -116,6 +172,10 @@ l1_tab, l2_tab, l3_tab, pipeline_tab, outputs_tab = st.tabs([
 
 with l1_tab:
     st.subheader("L1 Intake + Bootstrap")
+    if st.session_state.get("_l1_bootstrap_msg"):
+        st.success(str(st.session_state.pop("_l1_bootstrap_msg")))
+        st.info("L2 tab has been prefilled from your L1 intake resume.")
+        st.json(st.session_state.pop("_l1_bootstrap_body", {}))
     c1, c2 = st.columns(2)
     with c1:
         name = st.text_input("Candidate Name", key="l1_name")
@@ -147,11 +207,10 @@ with l1_tab:
                 }
                 r = httpx.post(f"{api_url}/intake/bootstrap", json=payload, timeout=30)
                 body = _safe_json(r)
-                _sync_l1_to_l2(name=name, resume_text=resume_text)
-                _sync_l1_to_pipeline(name=name, resume_text=resume_text)
-                st.success("L1 + L2 bootstrap completed")
-                st.info("L2 tab has been prefilled from your L1 intake resume.")
-                st.json(body)
+                _queue_l1_sync(name=name, resume_text=resume_text)
+                st.session_state["_l1_bootstrap_body"] = body
+                st.session_state["_l1_bootstrap_msg"] = "L1 + L2 bootstrap completed"
+                st.rerun()
             else:
                 payload = {
                     "version": "v1",
@@ -182,8 +241,9 @@ with l2_tab:
         if not l1_text:
             l1_upload = st.session_state.get("l1_up")
             l1_text = _upload_to_text(l1_upload)
-        _sync_l1_to_l2(name=st.session_state.get("l1_name", ""), resume_text=l1_text)
-        st.success("L2 fields updated from L1 intake.")
+        _queue_l1_sync(name=st.session_state.get("l1_name", ""), resume_text=l1_text)
+        st.success("L2 fields queued from L1 intake.")
+        st.rerun()
     if st.button("Build Evidence Profile"):
         try:
             r = httpx.post(f"{api_url}/profile", json={"candidate_name": c_name or None, "resume_text": c_resume}, timeout=30)
@@ -307,6 +367,7 @@ with pipeline_tab:
                     st.write(f"Approval Required: **{hitl.get('approval_required')}**")
                     for reason in hitl.get("reasons", []):
                         st.write(f"- {reason}")
+                    _render_layer_timeline(body)
             except Exception as e:
                 st.error(f"Automation failed: {e}")
 
@@ -323,6 +384,27 @@ with outputs_tab:
         try:
             s = httpx.get(f"{api_url}/system/automation/status", timeout=20)
             st.json(_safe_json(s))
+        except Exception as e:
+            st.error(str(e))
+
+    if st.button("Load System Architecture Map"):
+        try:
+            s = httpx.get(f"{api_url}/system/architecture/map", timeout=20)
+            st.json(_safe_json(s))
+        except Exception as e:
+            st.error(str(e))
+
+    p25_run_id = st.text_input("Run ID for latest layer report (optional)", key="out_run_id")
+    if st.button("Load Latest P25 Layer Report"):
+        try:
+            params = {"run_id": p25_run_id.strip()} if p25_run_id.strip() else None
+            s = httpx.get(f"{api_url}/p25/automation/layers/latest", params=params, timeout=30)
+            body = _safe_json(s)
+            st.json(body)
+            if isinstance(body, dict) and body.get("layers"):
+                st.markdown("### P25 Layer Status")
+                for row in body.get("layers", []):
+                    st.write(f"- **{row.get('layer')}** → `{row.get('status')}`")
         except Exception as e:
             st.error(str(e))
 

@@ -190,16 +190,39 @@ def latest_file(pattern: str) -> Optional[str]:
     return str(max(files, key=lambda f: Path(f).stat().st_mtime))
 
 
+
+
+def _extract_pdf_text_bytes(raw: bytes) -> str:
+    try:
+        from pypdf import PdfReader
+        import io
+
+        reader = PdfReader(io.BytesIO(raw))
+        txt = "\n".join((p.extract_text() or "") for p in reader.pages).strip()
+        if txt:
+            return txt
+    except Exception:
+        pass
+
+    try:
+        import fitz  # pymupdf
+
+        doc = fitz.open(stream=raw, filetype="pdf")
+        txt = "\n".join(page.get_text("text") for page in doc).strip()
+        if txt:
+            return txt
+    except Exception:
+        pass
+
+    return ""
+
+
 def _extract_upload_text(upload: UploadFile) -> str:
     name = (upload.filename or "").lower()
     raw = upload.file.read()
 
     if name.endswith(".pdf"):
-        from pypdf import PdfReader
-        import io
-
-        reader = PdfReader(io.BytesIO(raw))
-        return "\n".join((p.extract_text() or "") for p in reader.pages).strip()
+        return _extract_pdf_text_bytes(raw)
 
     if name.endswith(".docx"):
         from docx import Document
@@ -1040,6 +1063,10 @@ if _MULTIPART_AVAILABLE:
     ):
         resume_text = _extract_upload_text(resume_file)
         job_text = _extract_upload_text(job_file)
+        if not resume_text.strip():
+            return {"status": "error", "message": "Unable to extract readable text from resume upload. Please upload selectable-text PDF/DOCX or paste resume text."}
+        if not job_text.strip():
+            return {"status": "error", "message": "Unable to extract readable text from job upload. Please upload selectable-text PDF/DOCX or paste job text."}
         payload = {
             "run_id": run_id,
             "candidate_name": candidate_name,
@@ -1061,6 +1088,8 @@ if _MULTIPART_AVAILABLE:
         private_mode: bool = Form(default=True),
     ):
         resume_text = _extract_upload_text(resume_file)
+        if not resume_text.strip():
+            return {"status": "error", "message": "Unable to extract readable text from resume upload. Please upload selectable-text PDF/DOCX or paste resume text."}
         roles = [x.strip() for x in roles_csv.split(",") if x.strip()]
         payload = {
             "run_id": run_id,
@@ -1104,6 +1133,79 @@ def p25_automation_trace_latest(run_id: str | None = None):
 def p25_system_health():
     return run_system_health_checks()
 
+
+@app.get("/p25/automation/layers/latest")
+def p25_automation_layers_latest(run_id: str | None = None):
+    """Return a layer-by-layer status view for the latest P25 trace artifact."""
+    trace_resp = latest_p25_trace(run_id)
+    if trace_resp.get("status") != "ok":
+        return trace_resp
+
+    trace = trace_resp.get("trace", {})
+    layers = trace.get("layers", {})
+    ordered = [
+        "L1_intake_bootstrap",
+        "L2_parsing",
+        "L3_jobs",
+        "L4_matching",
+        "L5_ranking",
+        "L6_generation",
+        "L7_guardrails",
+        "L8_summary",
+        "L9_vector_indexing",
+        "L10_hitl_decision",
+    ]
+
+    rows: list[dict] = []
+    for layer in ordered:
+        if layer in {"L1_intake_bootstrap", "L9_vector_indexing", "L10_hitl_decision"}:
+            rows.append({"layer": layer, "status": "derived", "details": "Available from run output payload."})
+            continue
+        node = layers.get(layer, {})
+        rows.append(
+            {
+                "layer": layer,
+                "status": "ok" if node else "missing",
+                "agent": node.get("agent"),
+                "input": node.get("input", {}),
+                "output": node.get("output", {}),
+                "next_layer": node.get("next_layer"),
+            }
+        )
+
+    return {
+        "status": "ok",
+        "run_id": trace.get("run_id"),
+        "trace_path": trace_resp.get("path"),
+        "layers": rows,
+    }
+
+
+@app.get("/system/architecture/map")
+def system_architecture_map():
+    """Expose where major agents, orchestration, retrieval, and persistence components live."""
+    return {
+        "status": "ok",
+        "layers": {
+            "L1_intake": {"api": "apps/api/main.py::/intake,/intake/bootstrap", "schema": "src/careeros/intake/schema.py", "service": "src/careeros/intake/service.py"},
+            "L2_resume_profile": {"api": "apps/api/main.py::/profile", "agent": "src/careeros/phase3/next_steps.py::parser_extract", "service": "src/careeros/parsing/service.py"},
+            "L3_jobs_ingestion": {"api": "apps/api/main.py::/jobs/ingest,/jobs/discover_ingest", "discovery": "src/careeros/integrations/job_boards/sources.py", "agent": "src/careeros/phase3/next_steps.py::connector_ingest"},
+            "L4_matching": {"api": "apps/api/main.py::/match/run", "service": "src/careeros/matching/service.py"},
+            "L5_ranking": {"api": "apps/api/main.py::/rank/run", "service": "src/careeros/ranking/service.py"},
+            "L6_generation": {"api": "apps/api/main.py::/generate/package", "service": "src/careeros/generation/service.py"},
+            "L7_guardrails": {"api": "apps/api/main.py::/guardrails/validate", "service": "src/careeros/guardrails/service.py"},
+            "L8_summary": {"router": "src/careeros/orchestration/router.py::generate_summary_with_fallback", "entry": "src/careeros/phase3/next_steps.py::_ollama_summary"},
+            "L9_vectors_rag": {"store": "src/careeros/evidence/vector_store.py", "indexing": "src/careeros/phase3/next_steps.py::p25_automation_run", "retrieval": "src/careeros/evidence/service.py"},
+            "L10_hitl": {"agent": "src/careeros/phase3/next_steps.py::_hitl_decision", "approval_api": "apps/api/main.py::/p22/approval/decision"},
+        },
+        "orchestration": {
+            "p25": "src/careeros/phase3/next_steps.py::p25_automation_run",
+            "langgraph": "src/careeros/phase3/langgraph_flow.py",
+            "p14_agentic": "src/careeros/agentic/p14_orchestrator.py",
+        },
+        "ui": "apps/ui/Home.py",
+        "artifact_roots": ["outputs/", "exports/", "data/"],
+    }
 
 
 SAFE_ARTIFACT_ROOTS = [

@@ -190,6 +190,7 @@ def p24_evaluate_run(run_id: str) -> dict[str, Any]:
 
 
 def parser_extract(payload: dict[str, Any]) -> dict[str, Any]:
+    """L2 parser agent: extract resume text, derive deterministic skills/signals, and persist parser artifact."""
     private_mode = bool(payload.get("private_mode", True))
     text, notes = _read_resume_text(payload)
     original_text = text
@@ -222,6 +223,7 @@ def parser_extract(payload: dict[str, Any]) -> dict[str, Any]:
 
 
 def vision_ocr(payload: dict[str, Any]) -> dict[str, Any]:
+    """Vision agent: OCR text extraction from resume images with optional deterministic mock mode."""
     mock = payload.get("mock_ocr_text")
     if mock:
         return {
@@ -264,6 +266,7 @@ def _html_to_text(html: str) -> str:
 
 
 def connector_ingest(payload: dict[str, Any]) -> dict[str, Any]:
+    """L3 connector agent: fetch job URLs, normalize text, and persist connector ingest artifacts."""
     # backward-compatible stub mode
     if "items_ingested" in payload and not payload.get("urls"):
         return {
@@ -436,6 +439,7 @@ def latest_p25_trace(run_id: str | None = None) -> dict[str, Any]:
 
 
 def p25_automation_run(payload: dict[str, Any]) -> dict[str, Any]:
+    """End-to-end orchestrator for L2-L10: parse -> discover/ingest -> match -> rank -> generate -> guardrails -> summary -> vectors -> HITL."""
     run_id = str(payload.get("run_id") or f"p25_{_stamp()}")
     candidate_name = payload.get("candidate_name")
     top_n = int(payload.get("top_n", 3))
