@@ -6,7 +6,7 @@ from typing import List, Dict
 
 from careeros.parsing.schema import EvidenceProfile
 from careeros.jobs.schema import JobPost
-from careeros.generation.schema import ApplicationPackage, ApplicationPackageV2, ResumeBullet, CoverLetterDraft
+from careeros.generation.schema import ApplicationPackage, ApplicationPackageV2, ResumeBullet, CoverLetterDraft, TailoredResume
 
 def _bullet_templates() -> List[str]:
     # Keep these “safe”: no fake metrics, no invented employers, no invented years.
@@ -29,6 +29,42 @@ def generate_bullets(overlap_skills: List[str]) -> List[ResumeBullet]:
         bullets.append(ResumeBullet(text=t.format(skills=skills_str), evidence_skills=skills))
     return bullets
 
+
+
+def generate_tailored_resume(profile: EvidenceProfile, job: JobPost, overlap_skills: List[str]) -> TailoredResume:
+    role = job.title or (profile.titles[0] if profile.titles else "Target Role")
+    company = job.company or "Target Company"
+    key_skills = overlap_skills[:10] if overlap_skills else profile.skills[:10]
+
+    summary = (
+        f"Engineer focused on {role} opportunities with hands-on delivery across APIs, data/ML workflows, "
+        f"and production reliability. Strong alignment with {company} requirements through practical execution "
+        f"in {', '.join(key_skills[:6]) if key_skills else 'software engineering fundamentals'}."
+    )
+
+    exp_highlights = [b.text for b in generate_bullets(key_skills)[:4]]
+    proj_highlights = []
+    for prj in profile.projects[:3]:
+        line = f"{prj.name or 'Project'}: "
+        if prj.stack:
+            line += f"Tech stack {', '.join(prj.stack[:6])}. "
+        if prj.highlights:
+            line += prj.highlights[0]
+        proj_highlights.append(line.strip())
+
+    if not proj_highlights:
+        proj_highlights = [
+            "Built end-to-end feature pipelines with measurable quality checks and deployment readiness.",
+            "Implemented testing and observability patterns to improve stability and iteration speed.",
+        ]
+
+    return TailoredResume(
+        headline=f"{profile.candidate_name or 'Candidate'} - {role}",
+        professional_summary=summary,
+        core_skills=key_skills,
+        experience_highlights=exp_highlights,
+        projects_highlights=proj_highlights,
+    )
 
 def generate_cover_letter(profile: EvidenceProfile, job: JobPost, overlap_skills: List[str]) -> CoverLetterDraft:
     role = job.title or "the role"
@@ -69,6 +105,7 @@ def write_application_package(pkg: ApplicationPackage, out_dir: str = "exports/p
 
 def build_package(profile: EvidenceProfile, job: JobPost, run_id: str, profile_path: str, job_path: str, overlap_skills: List[str]) -> ApplicationPackage:
     bullets = generate_bullets(overlap_skills)
+    tailored_resume = generate_tailored_resume(profile, job, overlap_skills)
     cover = generate_cover_letter(profile, job, overlap_skills)
     qa = {
         "Why are you a fit for this role?": f"My experience in {', '.join(overlap_skills[:6]) if overlap_skills else 'relevant areas'} matches the role requirements, and I build production-ready systems with strong engineering discipline.",
@@ -82,6 +119,7 @@ def build_package(profile: EvidenceProfile, job: JobPost, run_id: str, profile_p
         job_title_hint=job.title,
         company_hint=job.company,
         bullets=bullets,
+        tailored_resume=tailored_resume,
         cover_letter=cover,
         qa_stubs=qa,
     )
@@ -127,6 +165,7 @@ def build_grounded_package_v2(
     skill_to_chunk_ids: Dict[str, List[str]],
 ) -> ApplicationPackageV2:
     bullets = generate_grounded_bullets(overlap_skills, skill_to_chunk_ids)
+    tailored_resume = generate_tailored_resume(profile, job, overlap_skills)
     cover = generate_cover_letter(profile, job, overlap_skills)
     qa = {
         "Why are you a fit for this role?": f"My experience in {', '.join(overlap_skills[:6]) if overlap_skills else 'relevant areas'} matches the role requirements, and I can provide cited evidence for each claim.",
@@ -141,6 +180,7 @@ def build_grounded_package_v2(
         job_title_hint=job.title,
         company_hint=job.company,
         bullets=bullets,
+        tailored_resume=tailored_resume,
         cover_letter=cover,
         qa_stubs=qa,
         citations_required=True,

@@ -13,6 +13,15 @@ class CoverLetterDraft(BaseModel):
     paragraphs: List[str] = Field(default_factory=list)
 
 
+
+
+class TailoredResume(BaseModel):
+    headline: str = ""
+    professional_summary: str = ""
+    core_skills: List[str] = Field(default_factory=list)
+    experience_highlights: List[str] = Field(default_factory=list)
+    projects_highlights: List[str] = Field(default_factory=list)
+
 class ApplicationPackage(BaseModel):
     version: str = "v1"
 
@@ -24,6 +33,7 @@ class ApplicationPackage(BaseModel):
     company_hint: Optional[str] = None
 
     bullets: List[ResumeBullet] = Field(default_factory=list)
+    tailored_resume: TailoredResume = Field(default_factory=TailoredResume)
     cover_letter: CoverLetterDraft
     qa_stubs: Dict[str, str] = Field(default_factory=dict)  # q -> draft answer
 
@@ -42,6 +52,7 @@ class ApplicationPackageV2(BaseModel):
     company_hint: Optional[str] = None
 
     bullets: List[ResumeBullet] = Field(default_factory=list)
+    tailored_resume: TailoredResume = Field(default_factory=TailoredResume)
     cover_letter: CoverLetterDraft
     qa_stubs: Dict[str, str] = Field(default_factory=dict)
 

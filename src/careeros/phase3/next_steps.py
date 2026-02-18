@@ -10,6 +10,9 @@ import os
 
 import httpx
 
+from careeros.core.privacy import redact_pii, privacy_metadata
+from careeros.integrations.job_boards.sources import discover_job_urls
+
 from careeros.generation.service import build_package, write_application_package
 from careeros.guardrails.service import validate_package_against_evidence, write_validation_report
 from careeros.jobs.service import build_jobpost_from_text, write_jobpost
@@ -35,12 +38,21 @@ def _read_resume_text(payload: dict[str, Any]) -> tuple[str, list[str]]:
     source_type = str(payload.get("source_type", "inline")).lower()
     text = (payload.get("text") or payload.get("resume_text") or "").strip()
     source_path = payload.get("source_path")
+    source_url = payload.get("source_url") or payload.get("linkedin_url") or payload.get("website_url")
 
     if text:
         return text, notes
 
+    if source_url and source_type in {"url", "web", "website", "linkedin", "linkedin_url"}:
+        try:
+            r = httpx.get(str(source_url), timeout=20, follow_redirects=True)
+            r.raise_for_status()
+            return _html_to_text(r.text), [f"Fetched profile from URL: {source_url}"]
+        except Exception as e:
+            return "", [f"source_url fetch failed: {e}"]
+
     if not source_path:
-        return "", ["No text/source_path provided"]
+        return "", ["No text/source_path/source_url provided"]
 
     p = Path(source_path)
     if not p.exists():
@@ -142,8 +154,13 @@ def p24_evaluate_run(run_id: str) -> dict[str, Any]:
 
 
 def parser_extract(payload: dict[str, Any]) -> dict[str, Any]:
+    private_mode = bool(payload.get("private_mode", True))
     text, notes = _read_resume_text(payload)
-    skills = extract_skills(text) if text else []
+    original_text = text
+    if private_mode and text:
+        text = redact_pii(text)
+        notes.append("PII redaction applied before artifact persistence")
+    skills = extract_skills(original_text) if original_text else []
     section_hits = {
         "skills": int(bool(re.search(r"\bskills\b", text, re.IGNORECASE))),
         "experience": int(bool(re.search(r"\bexperience\b", text, re.IGNORECASE))),
@@ -157,16 +174,17 @@ def parser_extract(payload: dict[str, Any]) -> dict[str, Any]:
         "status": "ok" if text else "error",
         "agent": "parser",
         "source_type": payload.get("source_type", "inline"),
-        "char_count": len(text),
+        "char_count": len(original_text),
         "skills": skills,
         "section_hits": section_hits,
         "notes": notes,
+        "privacy": privacy_metadata(raw_text=original_text, private_mode=private_mode),
     }
     out_fp.write_text(json.dumps(artifact, indent=2), encoding="utf-8")
 
     return {
         **artifact,
-        "extracted_text": text,
+        "extracted_text": original_text,
         "path": str(out_fp),
     }
 
@@ -391,10 +409,21 @@ def p25_automation_run(payload: dict[str, Any]) -> dict[str, Any]:
         return {"status": "error", "run_id": run_id, "message": "Resume text could not be extracted", "parser": parse_result}
 
     profile = build_profile_from_text(resume_text, candidate_name=candidate_name)
+    private_mode = bool((payload.get("privacy") or {}).get("private_mode", True))
+    if private_mode:
+        profile.raw_text = redact_pii(profile.raw_text)
     profile_path = str(write_profile(profile))
 
     jobs_payload = payload.get("jobs") or {}
     ingested_jobs: list[str] = []
+
+    if jobs_payload.get("auto_discover"):
+        pref = jobs_payload.get("preferences") or {}
+        role = str(pref.get("role") or (profile.titles[0] if profile.titles else "Software Engineer"))
+        location = str(pref.get("location") or "USA")
+        discovered = discover_job_urls(role=role, location=location, max_per_source=int(jobs_payload.get("max_per_source", 2)))
+        jobs_payload.setdefault("urls", [])
+        jobs_payload["urls"] = list(dict.fromkeys((jobs_payload.get("urls") or []) + discovered.get("urls", [])))
 
     for jt in jobs_payload.get("job_texts", []):
         if isinstance(jt, str) and jt.strip():
@@ -456,7 +485,7 @@ def p25_automation_run(payload: dict[str, Any]) -> dict[str, Any]:
             "L2_parsing": {
                 "agent": "parser",
                 "input": {"resume_source": (payload.get("resume") or {}).get("source_type", "inline")},
-                "output": {"profile_path": profile_path, "skills": profile.skills},
+                "output": {"profile_path": profile_path, "skills": profile.skills, "private_mode": private_mode},
                 "next_layer": "L3_jobs",
             },
             "L3_jobs": {
