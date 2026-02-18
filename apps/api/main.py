@@ -229,6 +229,29 @@ def health():
     return {"status": "ok", "service": "CareerOS API", "run_id": run_id}
 
 
+
+
+@app.get("/system/storage/status")
+def system_storage_status():
+    roots = {
+        "outputs": str(Path("outputs").resolve()),
+        "exports": str(Path("exports").resolve()),
+        "data": str(Path("data").resolve()),
+    }
+    vector_backend = os.getenv("VECTOR_DB", "none")
+    vector_info = {
+        "enabled": vector_backend.lower() != "none",
+        "backend": vector_backend,
+        "default": "none (file-based evidence retrieval)",
+        "note": "Set VECTOR_DB=chroma or qdrant and wire embeddings for semantic retrieval.",
+    }
+    return {
+        "status": "ok",
+        "storage": roots,
+        "database": {"default": str(Path("mlflow.db").resolve())},
+        "vector_db": vector_info,
+    }
+
 @app.get("/version")
 def version():
     run_id = new_run_id()
@@ -957,14 +980,14 @@ def phases_status():
         "P22": "ready",
         "P23": "ready",
         "P24": "ready",
-        "P25": "in_progress",
+        "P25": "ready",
     }
     return {
         "status": "ok",
         "phases": [
             {"phase": p, "status": st, "available": st == "ready"} for p, st in phase_status.items()
         ],
-        "next_focus": "P25 (free-stack integrations)",
+        "next_focus": "P26 (beta hardening + feedback loop)",
     }
 
 
