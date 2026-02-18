@@ -47,3 +47,5 @@ def test_p25_automation_pipeline_with_demo_texts():
     assert len(pkg.get("cover_letter", {}).get("paragraphs", [])) >= 4
 
     assert body["llm_summary"]["status"] in {"ok", "degraded"}
+    assert Path(body["vector_store"]["path"]).exists()
+    assert body["hitl"]["approval_required"] is False or body["hitl"]["approval_required"] is True

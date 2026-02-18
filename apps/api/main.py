@@ -14,7 +14,7 @@ from typing import Optional
 
 from fastapi import FastAPI, HTTPException, Query, Request, UploadFile, File, Form
 from fastapi.responses import JSONResponse, FileResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 ROOT_DIR = Path(__file__).resolve().parents[2]
@@ -119,6 +119,7 @@ from careeros.phase3.next_steps import (
 from careeros.phase3.evaluator_v2 import evaluate_run_v2, latest_eval_v2, EvalWeights
 from careeros.phase3.system_checks import run_system_health_checks
 from careeros.feedback.service import append_feedback, append_employer_signal, list_feedback
+from careeros.evidence.vector_store import vector_capabilities
 
 
 # ------------------------------------------------------------------------------
@@ -209,6 +210,16 @@ def _extract_upload_text(upload: UploadFile) -> str:
             doc = Document(tmp.name)
             return "\n".join(par.text for par in doc.paragraphs).strip()
 
+    if name.endswith((".png", ".jpg", ".jpeg", ".webp", ".bmp", ".tiff")):
+        try:
+            import pytesseract
+            from PIL import Image
+            import io
+
+            return pytesseract.image_to_string(Image.open(io.BytesIO(raw))).strip()
+        except Exception:
+            return ""
+
     return raw.decode("utf-8", errors="ignore").strip()
 
 
@@ -238,18 +249,45 @@ def system_storage_status():
         "exports": str(Path("exports").resolve()),
         "data": str(Path("data").resolve()),
     }
-    vector_backend = os.getenv("VECTOR_DB", "none")
-    vector_info = {
-        "enabled": vector_backend.lower() != "none",
-        "backend": vector_backend,
-        "default": "none (file-based evidence retrieval)",
-        "note": "Set VECTOR_DB=chroma or qdrant and wire embeddings for semantic retrieval.",
-    }
+    caps = vector_capabilities()
+    vector_backend = str(caps.get("vector_db", "chroma"))
     return {
         "status": "ok",
         "storage": roots,
         "database": {"default": str(Path("mlflow.db").resolve())},
-        "vector_db": vector_info,
+        "vector_db": {
+            "enabled": vector_backend.lower() != "none",
+            "backend": vector_backend,
+            "embedding_model": caps.get("embedding_model"),
+            "default": "Chroma local persistent DB at outputs/phase3/chroma",
+            "note": "Set VECTOR_DB=qdrant and QDRANT_URL(+QDRANT_API_KEY) to use hosted Qdrant.",
+        },
+    }
+
+
+@app.get("/system/automation/status")
+def system_automation_status():
+    caps = vector_capabilities()
+    return {
+        "status": "ok",
+        "automation_layers": {
+            "L1_intake_bootstrap": True,
+            "L2_parsing": True,
+            "L3_job_discovery": True,
+            "L4_matching": True,
+            "L5_ranking": True,
+            "L6_generation": True,
+            "L7_guardrails": True,
+            "L8_llm_summary": True,
+            "L9_vector_indexing": True,
+            "L10_hitl_decision": True,
+        },
+        "integrations": caps,
+        "required_for_full_web_discovery": ["SERPER_API_KEY or TAVILY_API_KEY"],
+        "optional_for_js_heavy_portals": ["SCRAPINGBEE_API_KEY"],
+        "required_for_hosted_qdrant": ["QDRANT_URL", "QDRANT_API_KEY(optional if public)"],
+        "required_for_hf_summary": ["HF_TOKEN or HUGGINGFACE_API_KEY"],
+        "ocr_for_image_uploads": ["Install tesseract binary + pytesseract + pillow"],
     }
 
 @app.get("/version")
@@ -292,6 +330,47 @@ def create_profile(req: ProfileRequest):
     out_path = write_profile(profile)
     log_event(logger, "profile_created", run_id, path=str(out_path), skills=len(profile.skills))
     return {"status": "ok", "path": str(out_path), "skills": profile.skills, "run_id": run_id}
+
+
+
+
+class IntakeBootstrapRequest(BaseModel):
+    candidate_name: str | None = None
+    target_roles: list[str] = Field(default_factory=list)
+    location: str | None = None
+    remote_only: bool = True
+    salary_min: int | None = None
+    salary_max: int | None = None
+    work_auth: str | None = None
+    resume_text: str
+
+
+@app.post("/intake/bootstrap")
+def intake_bootstrap(req: IntakeBootstrapRequest):
+    run_id = new_run_id()
+    intake = IntakeBundle(
+        candidate_name=req.candidate_name,
+        target_roles=req.target_roles,
+        constraints={
+            "location": req.location,
+            "remote_only": req.remote_only,
+            "salary_min": req.salary_min,
+            "salary_max": req.salary_max,
+            "work_auth": req.work_auth,
+            "relocation_ok": False,
+        },
+    )
+    intake_path = write_intake_bundle(intake)
+    profile = build_profile_from_text(req.resume_text, candidate_name=req.candidate_name)
+    profile_path = write_profile(profile)
+    log_event(logger, "intake_bootstrap_created", run_id, intake_path=str(intake_path), profile_path=str(profile_path))
+    return {
+        "status": "ok",
+        "run_id": run_id,
+        "intake_path": str(intake_path),
+        "profile_path": str(profile_path),
+        "skills": profile.skills,
+    }
 
 
 @app.get("/debug/error")
