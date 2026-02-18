@@ -432,6 +432,7 @@ class JobDiscoverIngestRequest(BaseModel):
     max_per_source: int = Field(default=2, ge=1, le=5)
     daily_limit: int = Field(default=20, ge=1, le=60)
     timeout_s: int = Field(default=10, ge=4, le=45)
+    recent_hours: int | None = Field(default=36, ge=1, le=240)
 
 
 @app.post("/jobs/discover_ingest")
@@ -442,6 +443,7 @@ def jobs_discover_and_ingest(req: JobDiscoverIngestRequest):
         location=req.location,
         max_per_source=req.max_per_source,
         daily_limit=req.daily_limit,
+        recent_hours=req.recent_hours,
     )
     connector = connector_ingest({"urls": discovered.get("urls", []), "timeout_s": req.timeout_s})
 
@@ -1086,6 +1088,7 @@ if _MULTIPART_AVAILABLE:
         location: str = Form(default="USA"),
         daily_limit: int = Form(default=20),
         private_mode: bool = Form(default=True),
+        recent_hours: int = Form(default=36),
     ):
         resume_text = _extract_upload_text(resume_file)
         if not resume_text.strip():
@@ -1101,7 +1104,7 @@ if _MULTIPART_AVAILABLE:
                 "auto_discover": True,
                 "daily_limit": int(daily_limit),
                 "max_per_source": 2,
-                "preferences": {"roles": roles, "location": location},
+                "preferences": {"roles": roles, "location": location, "recent_hours": int(recent_hours)},
             },
         }
         return p25_automation_run(payload)
@@ -1206,6 +1209,39 @@ def system_architecture_map():
         "ui": "apps/ui/Home.py",
         "artifact_roots": ["outputs/", "exports/", "data/"],
     }
+
+
+@app.post("/artifacts/share/latest")
+def artifacts_share_latest(payload: dict | None = None):
+    """Upload latest key artifacts to transfer.sh (ephemeral sharing) when enabled."""
+    payload = payload or {}
+    if str(os.getenv("ENABLE_TRANSFER_SH", "false")).lower() not in {"1", "true", "yes"}:
+        return {
+            "status": "error",
+            "message": "Cloud artifact sharing is disabled. Set ENABLE_TRANSFER_SH=true to enable transfer.sh upload.",
+        }
+    patterns = payload.get("patterns") or [
+        "outputs/phase3/p25_runs/p25_trace_*.json",
+        "outputs/ranking/shortlist_*.json",
+        "outputs/guardrails/validation_report_*.json",
+        "outputs/profile/profile_*.json",
+    ]
+    links: list[dict] = []
+    errors: list[str] = []
+    for pattern in patterns:
+        fp = latest_file(pattern)
+        if not fp:
+            continue
+        try:
+            with open(fp, "rb") as f:
+                r = httpx.put(f"https://transfer.sh/{Path(fp).name}", content=f.read(), timeout=45)
+            if r.status_code in (200, 201):
+                links.append({"file": fp, "url": r.text.strip()})
+            else:
+                errors.append(f"{fp}: http_{r.status_code}")
+        except Exception as e:
+            errors.append(f"{fp}: {e}")
+    return {"status": "ok" if links else "degraded", "links": links, "errors": errors}
 
 
 SAFE_ARTIFACT_ROOTS = [
