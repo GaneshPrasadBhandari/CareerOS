@@ -24,4 +24,6 @@ dependencies = [
     "reportlab>=4.4.3",
     "streamlit>=1.54.0",
     "uvicorn>=0.35.0",
+    "wheel",
+    "packaging<26",
 ]
