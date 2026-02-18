@@ -190,6 +190,7 @@ def p24_evaluate_run(run_id: str) -> dict[str, Any]:
 
 
 def parser_extract(payload: dict[str, Any]) -> dict[str, Any]:
+    """L2 parser agent: extract resume text, derive deterministic skills/signals, and persist parser artifact."""
     private_mode = bool(payload.get("private_mode", True))
     text, notes = _read_resume_text(payload)
     original_text = text
@@ -222,6 +223,7 @@ def parser_extract(payload: dict[str, Any]) -> dict[str, Any]:
 
 
 def vision_ocr(payload: dict[str, Any]) -> dict[str, Any]:
+    """Vision agent: OCR text extraction from resume images with optional deterministic mock mode."""
     mock = payload.get("mock_ocr_text")
     if mock:
         return {
@@ -264,6 +266,7 @@ def _html_to_text(html: str) -> str:
 
 
 def connector_ingest(payload: dict[str, Any]) -> dict[str, Any]:
+    """L3 connector agent: fetch job URLs, normalize text, and persist connector ingest artifacts."""
     # backward-compatible stub mode
     if "items_ingested" in payload and not payload.get("urls"):
         return {
@@ -427,6 +430,40 @@ def _write_p25_trace(run_id: str, trace: dict[str, Any]) -> str:
     return str(fp)
 
 
+
+
+def _quality_gate_payload(*, match_score: float, report_status: str, llm_summary_text: str, shortlist_count: int) -> dict[str, Any]:
+    """Validate critical run outputs to reduce null/blank fields in API responses."""
+    issues: list[str] = []
+    if shortlist_count <= 0:
+        issues.append("No ranked jobs found")
+    if match_score <= 0:
+        issues.append("Match score is zero")
+    if report_status not in {"pass", "warn", "fail"}:
+        issues.append("Guardrails status missing")
+    if not (llm_summary_text or "").strip():
+        issues.append("LLM summary text is blank")
+    return {"status": "ok" if not issues else "warn", "issues": issues}
+
+
+def _final_recommendation(*, match_score: float, guardrails_status: str, hitl: dict[str, Any]) -> dict[str, Any]:
+    """Produce explainable recommendation summary (why recommend / why not)."""
+    recommend = match_score >= 0.55 and guardrails_status == "pass" and not bool(hitl.get("approval_required", False))
+    why_yes = [
+        "Skill overlap and ranking are sufficient for targeted submission." if match_score >= 0.55 else "",
+        "Guardrails did not detect blocking issues." if guardrails_status == "pass" else "",
+    ]
+    why_no = [
+        "Match score is below threshold for confident auto-apply." if match_score < 0.55 else "",
+        "Guardrails reported non-pass status." if guardrails_status != "pass" else "",
+        "HITL approval is required before submission." if bool(hitl.get("approval_required", False)) else "",
+    ]
+    return {
+        "recommended": recommend,
+        "why_recommended": [x for x in why_yes if x],
+        "why_not": [x for x in why_no if x],
+    }
+
 def latest_p25_trace(run_id: str | None = None) -> dict[str, Any]:
     pattern = f"outputs/phase3/p25_runs/p25_trace_{run_id}_*.json" if run_id else "outputs/phase3/p25_runs/p25_trace_*.json"
     fp = _latest(pattern)
@@ -436,6 +473,7 @@ def latest_p25_trace(run_id: str | None = None) -> dict[str, Any]:
 
 
 def p25_automation_run(payload: dict[str, Any]) -> dict[str, Any]:
+    """End-to-end orchestrator for L2-L10: parse -> discover/ingest -> match -> rank -> generate -> guardrails -> summary -> vectors -> HITL."""
     run_id = str(payload.get("run_id") or f"p25_{_stamp()}")
     candidate_name = payload.get("candidate_name")
     top_n = int(payload.get("top_n", 3))
@@ -463,11 +501,13 @@ def p25_automation_run(payload: dict[str, Any]) -> dict[str, Any]:
         if not roles and profile.titles:
             roles = profile.titles[:3]
         location = str(pref.get("location") or "USA")
+        recent_hours = pref.get("recent_hours")
         discovered = discover_job_urls_for_roles(
             roles=roles,
             location=location,
             max_per_source=int(jobs_payload.get("max_per_source", 2)),
             daily_limit=int(jobs_payload.get("daily_limit", 20)),
+            recent_hours=int(recent_hours) if recent_hours else None,
         )
         jobs_payload.setdefault("urls", [])
         jobs_payload["urls"] = list(dict.fromkeys((jobs_payload.get("urls") or []) + discovered.get("urls", [])))
@@ -552,6 +592,8 @@ def p25_automation_run(payload: dict[str, Any]) -> dict[str, Any]:
 
     llm_summary = _ollama_summary(run_id=run_id, score=match.score)
     hitl = _hitl_decision(match_score=match.score, guardrails_status=report.status, parser_skills=len(parse_result.get("skills", [])))
+    recommendation = _final_recommendation(match_score=match.score, guardrails_status=report.status, hitl=hitl)
+    quality_gate = _quality_gate_payload(match_score=match.score, report_status=report.status, llm_summary_text=llm_summary.get("text", ""), shortlist_count=len(shortlist.items))
 
     trace = {
         "run_id": run_id,
@@ -632,5 +674,7 @@ def p25_automation_run(payload: dict[str, Any]) -> dict[str, Any]:
         },
         "llm_summary": llm_summary,
         "hitl": hitl,
+        "recommendation": recommendation,
+        "quality_gate": quality_gate,
         "trace": trace,
     }

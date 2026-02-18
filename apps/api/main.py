@@ -120,6 +120,7 @@ from careeros.phase3.evaluator_v2 import evaluate_run_v2, latest_eval_v2, EvalWe
 from careeros.phase3.system_checks import run_system_health_checks
 from careeros.feedback.service import append_feedback, append_employer_signal, list_feedback
 from careeros.evidence.vector_store import vector_capabilities
+from careeros.integrations.job_boards.sources import discover_job_urls_for_roles
 
 
 # ------------------------------------------------------------------------------
@@ -189,16 +190,39 @@ def latest_file(pattern: str) -> Optional[str]:
     return str(max(files, key=lambda f: Path(f).stat().st_mtime))
 
 
+
+
+def _extract_pdf_text_bytes(raw: bytes) -> str:
+    try:
+        from pypdf import PdfReader
+        import io
+
+        reader = PdfReader(io.BytesIO(raw))
+        txt = "\n".join((p.extract_text() or "") for p in reader.pages).strip()
+        if txt:
+            return txt
+    except Exception:
+        pass
+
+    try:
+        import fitz  # pymupdf
+
+        doc = fitz.open(stream=raw, filetype="pdf")
+        txt = "\n".join(page.get_text("text") for page in doc).strip()
+        if txt:
+            return txt
+    except Exception:
+        pass
+
+    return ""
+
+
 def _extract_upload_text(upload: UploadFile) -> str:
     name = (upload.filename or "").lower()
     raw = upload.file.read()
 
     if name.endswith(".pdf"):
-        from pypdf import PdfReader
-        import io
-
-        reader = PdfReader(io.BytesIO(raw))
-        return "\n".join((p.extract_text() or "") for p in reader.pages).strip()
+        return _extract_pdf_text_bytes(raw)
 
     if name.endswith(".docx"):
         from docx import Document
@@ -370,6 +394,13 @@ def intake_bootstrap(req: IntakeBootstrapRequest):
         "intake_path": str(intake_path),
         "profile_path": str(profile_path),
         "skills": profile.skills,
+        "details": {
+            "message": "L1 intake and L2 profile bootstrap completed",
+            "candidate_name": req.candidate_name,
+            "target_roles": req.target_roles,
+            "location": req.location,
+            "jobs_discovery_ready": True,
+        },
     }
 
 
@@ -393,6 +424,71 @@ def ingest_job(req: JobIngestRequest):
     out_path = write_jobpost(job)
     log_event(logger, "job_ingested", run_id, path=str(out_path), keywords=len(job.keywords))
     return {"status": "ok", "path": str(out_path), "keywords": job.keywords, "run_id": run_id}
+
+
+class JobDiscoverIngestRequest(BaseModel):
+    roles: list[str] = Field(default_factory=list)
+    location: str = "USA"
+    max_per_source: int = Field(default=2, ge=1, le=5)
+    daily_limit: int = Field(default=20, ge=1, le=60)
+    timeout_s: int = Field(default=10, ge=4, le=45)
+    recent_hours: int | None = Field(default=36, ge=1, le=240)
+
+
+@app.post("/jobs/discover_ingest")
+def jobs_discover_and_ingest(req: JobDiscoverIngestRequest):
+    run_id = new_run_id()
+    discovered = discover_job_urls_for_roles(
+        roles=req.roles,
+        location=req.location,
+        max_per_source=req.max_per_source,
+        daily_limit=req.daily_limit,
+        recent_hours=req.recent_hours,
+    )
+    connector = connector_ingest({"urls": discovered.get("urls", []), "timeout_s": req.timeout_s})
+
+    ingested_paths: list[str] = []
+
+    # Always ingest discovered snippets first, so automation still works if remote pages block scraping.
+    for jt in discovered.get("job_texts", []):
+        raw_text = str(jt or "").strip()
+        if not raw_text:
+            continue
+        out_path = write_jobpost(build_jobpost_from_text(raw_text))
+        ingested_paths.append(str(out_path))
+
+    for item in connector.get("items", []):
+        raw_text = str(item.get("text") or "").strip()
+        if not raw_text:
+            continue
+        out_path = write_jobpost(build_jobpost_from_text(raw_text, url=item.get("url")))
+        ingested_paths.append(str(out_path))
+
+    status = "ok" if ingested_paths else "degraded"
+    log_event(
+        logger,
+        "jobs_discover_ingest_completed",
+        run_id,
+        discovered_urls=len(discovered.get("urls", [])),
+        ingested=len(ingested_paths),
+        status=status,
+    )
+    return {
+        "status": status,
+        "run_id": run_id,
+        "sources": discovered.get("sources", []),
+        "discovery": {
+            "status": discovered.get("status"),
+            "urls": discovered.get("urls", []),
+            "errors": discovered.get("errors", []),
+        },
+        "connector": {
+            "status": connector.get("status"),
+            "items_ingested": connector.get("items_ingested", 0),
+            "errors": connector.get("errors", []),
+        },
+        "job_paths": ingested_paths,
+    }
 
 
 # ------------------------------------------------------------------------------
@@ -969,6 +1065,10 @@ if _MULTIPART_AVAILABLE:
     ):
         resume_text = _extract_upload_text(resume_file)
         job_text = _extract_upload_text(job_file)
+        if not resume_text.strip():
+            return {"status": "error", "message": "Unable to extract readable text from resume upload. Please upload selectable-text PDF/DOCX or paste resume text."}
+        if not job_text.strip():
+            return {"status": "error", "message": "Unable to extract readable text from job upload. Please upload selectable-text PDF/DOCX or paste job text."}
         payload = {
             "run_id": run_id,
             "candidate_name": candidate_name,
@@ -988,8 +1088,11 @@ if _MULTIPART_AVAILABLE:
         location: str = Form(default="USA"),
         daily_limit: int = Form(default=20),
         private_mode: bool = Form(default=True),
+        recent_hours: int = Form(default=36),
     ):
         resume_text = _extract_upload_text(resume_file)
+        if not resume_text.strip():
+            return {"status": "error", "message": "Unable to extract readable text from resume upload. Please upload selectable-text PDF/DOCX or paste resume text."}
         roles = [x.strip() for x in roles_csv.split(",") if x.strip()]
         payload = {
             "run_id": run_id,
@@ -1001,7 +1104,7 @@ if _MULTIPART_AVAILABLE:
                 "auto_discover": True,
                 "daily_limit": int(daily_limit),
                 "max_per_source": 2,
-                "preferences": {"roles": roles, "location": location},
+                "preferences": {"roles": roles, "location": location, "recent_hours": int(recent_hours)},
             },
         }
         return p25_automation_run(payload)
@@ -1033,6 +1136,112 @@ def p25_automation_trace_latest(run_id: str | None = None):
 def p25_system_health():
     return run_system_health_checks()
 
+
+@app.get("/p25/automation/layers/latest")
+def p25_automation_layers_latest(run_id: str | None = None):
+    """Return a layer-by-layer status view for the latest P25 trace artifact."""
+    trace_resp = latest_p25_trace(run_id)
+    if trace_resp.get("status") != "ok":
+        return trace_resp
+
+    trace = trace_resp.get("trace", {})
+    layers = trace.get("layers", {})
+    ordered = [
+        "L1_intake_bootstrap",
+        "L2_parsing",
+        "L3_jobs",
+        "L4_matching",
+        "L5_ranking",
+        "L6_generation",
+        "L7_guardrails",
+        "L8_summary",
+        "L9_vector_indexing",
+        "L10_hitl_decision",
+    ]
+
+    rows: list[dict] = []
+    for layer in ordered:
+        if layer in {"L1_intake_bootstrap", "L9_vector_indexing", "L10_hitl_decision"}:
+            rows.append({"layer": layer, "status": "derived", "details": "Available from run output payload."})
+            continue
+        node = layers.get(layer, {})
+        rows.append(
+            {
+                "layer": layer,
+                "status": "ok" if node else "missing",
+                "agent": node.get("agent"),
+                "input": node.get("input", {}),
+                "output": node.get("output", {}),
+                "next_layer": node.get("next_layer"),
+            }
+        )
+
+    return {
+        "status": "ok",
+        "run_id": trace.get("run_id"),
+        "trace_path": trace_resp.get("path"),
+        "layers": rows,
+    }
+
+
+@app.get("/system/architecture/map")
+def system_architecture_map():
+    """Expose where major agents, orchestration, retrieval, and persistence components live."""
+    return {
+        "status": "ok",
+        "layers": {
+            "L1_intake": {"api": "apps/api/main.py::/intake,/intake/bootstrap", "schema": "src/careeros/intake/schema.py", "service": "src/careeros/intake/service.py"},
+            "L2_resume_profile": {"api": "apps/api/main.py::/profile", "agent": "src/careeros/phase3/next_steps.py::parser_extract", "service": "src/careeros/parsing/service.py"},
+            "L3_jobs_ingestion": {"api": "apps/api/main.py::/jobs/ingest,/jobs/discover_ingest", "discovery": "src/careeros/integrations/job_boards/sources.py", "agent": "src/careeros/phase3/next_steps.py::connector_ingest"},
+            "L4_matching": {"api": "apps/api/main.py::/match/run", "service": "src/careeros/matching/service.py"},
+            "L5_ranking": {"api": "apps/api/main.py::/rank/run", "service": "src/careeros/ranking/service.py"},
+            "L6_generation": {"api": "apps/api/main.py::/generate/package", "service": "src/careeros/generation/service.py"},
+            "L7_guardrails": {"api": "apps/api/main.py::/guardrails/validate", "service": "src/careeros/guardrails/service.py"},
+            "L8_summary": {"router": "src/careeros/orchestration/router.py::generate_summary_with_fallback", "entry": "src/careeros/phase3/next_steps.py::_ollama_summary"},
+            "L9_vectors_rag": {"store": "src/careeros/evidence/vector_store.py", "indexing": "src/careeros/phase3/next_steps.py::p25_automation_run", "retrieval": "src/careeros/evidence/service.py"},
+            "L10_hitl": {"agent": "src/careeros/phase3/next_steps.py::_hitl_decision", "approval_api": "apps/api/main.py::/p22/approval/decision"},
+        },
+        "orchestration": {
+            "p25": "src/careeros/phase3/next_steps.py::p25_automation_run",
+            "langgraph": "src/careeros/phase3/langgraph_flow.py",
+            "p14_agentic": "src/careeros/agentic/p14_orchestrator.py",
+        },
+        "ui": "apps/ui/Home.py",
+        "artifact_roots": ["outputs/", "exports/", "data/"],
+    }
+
+
+@app.post("/artifacts/share/latest")
+def artifacts_share_latest(payload: dict | None = None):
+    """Upload latest key artifacts to transfer.sh (ephemeral sharing) when enabled."""
+    payload = payload or {}
+    if str(os.getenv("ENABLE_TRANSFER_SH", "false")).lower() not in {"1", "true", "yes"}:
+        return {
+            "status": "error",
+            "message": "Cloud artifact sharing is disabled. Set ENABLE_TRANSFER_SH=true to enable transfer.sh upload.",
+        }
+    patterns = payload.get("patterns") or [
+        "outputs/phase3/p25_runs/p25_trace_*.json",
+        "outputs/ranking/shortlist_*.json",
+        "outputs/guardrails/validation_report_*.json",
+        "outputs/profile/profile_*.json",
+    ]
+    links: list[dict] = []
+    errors: list[str] = []
+    for pattern in patterns:
+        fp = latest_file(pattern)
+        if not fp:
+            continue
+        try:
+            with open(fp, "rb") as f:
+                r = httpx.put(f"https://transfer.sh/{Path(fp).name}", content=f.read(), timeout=45)
+            if r.status_code in (200, 201):
+                links.append({"file": fp, "url": r.text.strip()})
+            else:
+                errors.append(f"{fp}: http_{r.status_code}")
+        except Exception as e:
+            errors.append(f"{fp}: {e}")
+    return {"status": "ok" if links else "degraded", "links": links, "errors": errors}
 
 
 SAFE_ARTIFACT_ROOTS = [

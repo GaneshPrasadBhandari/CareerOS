@@ -30,7 +30,7 @@ def _job_text_from_item(item: dict[str, Any], role: str, location: str) -> str:
     )
 
 
-def discover_job_urls(*, role: str, location: str, max_per_source: int = 2) -> dict[str, Any]:
+def discover_job_urls(*, role: str, location: str, max_per_source: int = 2, recent_hours: int | None = None) -> dict[str, Any]:
     """Discover candidate job links for top sources via Serper (if API key configured)."""
     api_key = os.getenv("SERPER_API_KEY")
     if not api_key:
@@ -64,7 +64,7 @@ def discover_job_urls(*, role: str, location: str, max_per_source: int = 2) -> d
     headers = {"X-API-KEY": api_key, "Content-Type": "application/json"}
     with httpx.Client(timeout=20) as client:
         for src in TOP_8_SOURCES:
-            query = f"{role} jobs {location} site:{src}"
+            query = f"{role} jobs {location} site:{src}" + (f" posted in last {max(1, int(recent_hours))} hours" if recent_hours else "")
             try:
                 r = client.post("https://google.serper.dev/search", headers=headers, json={"q": query, "num": max_per_source})
                 r.raise_for_status()
@@ -82,7 +82,7 @@ def discover_job_urls(*, role: str, location: str, max_per_source: int = 2) -> d
     if tavily_key:
         with httpx.Client(timeout=20) as client:
             for src in TOP_8_SOURCES:
-                query = f"{role} jobs {location} site:{src}"
+                query = f"{role} jobs {location} site:{src}" + (f" posted in last {max(1, int(recent_hours))} hours" if recent_hours else "")
                 try:
                     r = client.post(
                         "https://api.tavily.com/search",
@@ -162,6 +162,7 @@ def discover_job_urls_for_roles(
     location: str,
     max_per_source: int = 2,
     daily_limit: int = 20,
+    recent_hours: int | None = None,
 ) -> dict[str, Any]:
     """Multi-role discovery with stable dedupe and daily cap."""
     role_urls: dict[str, list[str]] = {}
@@ -174,7 +175,11 @@ def discover_job_urls_for_roles(
         role_list = ["Software Engineer"]
 
     for role in role_list:
-        out = discover_job_urls(role=role, location=location, max_per_source=max_per_source)
+        try:
+            out = discover_job_urls(role=role, location=location, max_per_source=max_per_source, recent_hours=recent_hours)
+        except TypeError:
+            # Backward compatibility for tests/mocks that do not accept recent_hours yet.
+            out = discover_job_urls(role=role, location=location, max_per_source=max_per_source)
         urls = out.get("urls", [])
         role_urls[role] = urls
         all_urls.extend(urls)
@@ -189,5 +194,6 @@ def discover_job_urls_for_roles(
         "urls_by_role": role_urls,
         "errors": all_errors,
         "daily_limit": daily_limit,
+        "recent_hours": recent_hours,
         "sources": TOP_8_SOURCES,
     }

@@ -13,10 +13,40 @@ st.caption("L1 Intake → L2 Parse → L3 Discover/Ingest Jobs → L4 Match → 
 
 
 def _api_url() -> str:
-    cloud_api_url = st.secrets.get("API_URL") or st.secrets.get("BACKEND_URL") or "https://careeros-backend-d9sc.onrender.com"
+    cloud_api_url = "https://careeros-backend-d9sc.onrender.com"
+    try:
+        cloud_api_url = st.secrets.get("API_URL") or st.secrets.get("BACKEND_URL") or cloud_api_url
+    except Exception:
+        pass
     if "api_url" not in st.session_state:
         st.session_state["api_url"] = cloud_api_url
     return st.session_state["api_url"]
+
+
+
+
+def _extract_pdf_text(raw: bytes) -> str:
+    try:
+        from pypdf import PdfReader
+
+        reader = PdfReader(io.BytesIO(raw))
+        txt = "\n".join((pg.extract_text() or "") for pg in reader.pages).strip()
+        if txt:
+            return txt
+    except Exception:
+        pass
+
+    try:
+        import fitz  # pymupdf
+
+        doc = fitz.open(stream=raw, filetype="pdf")
+        txt = "\n".join(page.get_text("text") for page in doc).strip()
+        if txt:
+            return txt
+    except Exception:
+        pass
+
+    return ""
 
 
 def _upload_to_text(uploaded_file) -> str:
@@ -25,13 +55,7 @@ def _upload_to_text(uploaded_file) -> str:
     name = (uploaded_file.name or "").lower()
     raw = uploaded_file.getvalue()
     if name.endswith(".pdf"):
-        try:
-            from pypdf import PdfReader
-
-            reader = PdfReader(io.BytesIO(raw))
-            return "\n".join((p.extract_text() or "") for p in reader.pages).strip()
-        except Exception:
-            return raw.decode("utf-8", errors="ignore").strip()
+        return _extract_pdf_text(raw)
     if name.endswith(".docx"):
         try:
             from docx import Document
@@ -55,12 +79,62 @@ def _upload_to_text(uploaded_file) -> str:
     return raw.decode("utf-8", errors="ignore").strip()
 
 
+
+
+def _render_layer_timeline(body: dict) -> None:
+    """Render layer-by-layer automation output for run review/evaluation."""
+    trace_layers = ((body or {}).get("trace") or {}).get("layers") or {}
+    if not trace_layers:
+        st.info("No layer trace found in response.")
+        return
+
+    order = [
+        ("L2_parsing", "Resume Parser"),
+        ("L3_jobs", "Job Discovery/Connector"),
+        ("L4_matching", "Matcher"),
+        ("L5_ranking", "Ranker"),
+        ("L6_generation", "Generator"),
+        ("L7_guardrails", "Guardrails"),
+        ("L8_summary", "LLM Summary"),
+    ]
+
+    st.markdown("### Layer-by-layer execution")
+    for layer_key, label in order:
+        node = trace_layers.get(layer_key)
+        if not node:
+            continue
+        with st.expander(f"{layer_key}: {label}", expanded=False):
+            st.write(f"**Agent:** {node.get('agent', 'n/a')}")
+            st.write(f"**Next:** {node.get('next_layer', 'n/a')}")
+            st.markdown("**Input**")
+            st.json(node.get("input", {}))
+            st.markdown("**Output**")
+            st.json(node.get("output", {}))
+
+
 def _safe_json(resp: requests.Response | httpx.Response):
     try:
         return resp.json()
     except Exception:
         return {"status": "error", "message": resp.text}
 
+
+def _queue_l1_sync(name: str, resume_text: str) -> None:
+    st.session_state["_pending_sync_name"] = name or ""
+    st.session_state["_pending_sync_resume"] = resume_text or ""
+    st.session_state["_pending_sync_apply"] = True
+
+
+if st.session_state.get("_pending_sync_apply"):
+    pending_name = str(st.session_state.get("_pending_sync_name") or "")
+    pending_resume = str(st.session_state.get("_pending_sync_resume") or "")
+    if pending_name:
+        st.session_state["l2_name"] = pending_name
+        st.session_state["p25_candidate"] = pending_name
+    if pending_resume:
+        st.session_state["l2_resume"] = pending_resume
+        st.session_state["p25_resume_inline"] = pending_resume
+    st.session_state["_pending_sync_apply"] = False
 
 with st.sidebar:
     st.header("System")
@@ -88,16 +162,21 @@ try:
 except Exception as e:
     st.error(f"❌ API not reachable: {e}")
 
-l1_tab, l2_tab, l3_tab, pipeline_tab, outputs_tab = st.tabs([
+l1_tab, l2_tab, l3_tab, layer_tab, pipeline_tab, outputs_tab = st.tabs([
     "L1 Intake",
     "L2 Resume Profile",
     "L3 Jobs",
-    "L4-L10 Automation",
+    "L4-L10 Layer Runner",
+    "One-Click Automation",
     "Outputs & Artifacts",
 ])
 
 with l1_tab:
     st.subheader("L1 Intake + Bootstrap")
+    if st.session_state.get("_l1_bootstrap_msg"):
+        st.success(str(st.session_state.pop("_l1_bootstrap_msg")))
+        st.info("L2 tab has been prefilled from your L1 intake resume.")
+        st.json(st.session_state.pop("_l1_bootstrap_body", {}))
     c1, c2 = st.columns(2)
     with c1:
         name = st.text_input("Candidate Name", key="l1_name")
@@ -128,8 +207,11 @@ with l1_tab:
                     "resume_text": resume_text,
                 }
                 r = httpx.post(f"{api_url}/intake/bootstrap", json=payload, timeout=30)
-                st.success("L1 + L2 bootstrap completed")
-                st.json(_safe_json(r))
+                body = _safe_json(r)
+                _queue_l1_sync(name=name, resume_text=resume_text)
+                st.session_state["_l1_bootstrap_body"] = body
+                st.session_state["_l1_bootstrap_msg"] = "L1 + L2 bootstrap completed"
+                st.rerun()
             else:
                 payload = {
                     "version": "v1",
@@ -152,8 +234,17 @@ with l1_tab:
 
 with l2_tab:
     st.subheader("L2 Resume Parsing")
+    st.caption("If you uploaded/pasted resume in L1, fields here are auto-filled.")
     c_name = st.text_input("Candidate Name", key="l2_name")
     c_resume = st.text_area("Resume Text", height=220, key="l2_resume")
+    if st.button("Use latest L1 resume", key="l2_use_l1"):
+        l1_text = (st.session_state.get("l1_resume_text") or "").strip()
+        if not l1_text:
+            l1_upload = st.session_state.get("l1_up")
+            l1_text = _upload_to_text(l1_upload)
+        _queue_l1_sync(name=st.session_state.get("l1_name", ""), resume_text=l1_text)
+        st.success("L2 fields queued from L1 intake.")
+        st.rerun()
     if st.button("Build Evidence Profile"):
         try:
             r = httpx.post(f"{api_url}/profile", json={"candidate_name": c_name or None, "resume_text": c_resume}, timeout=30)
@@ -167,14 +258,88 @@ with l2_tab:
 
 with l3_tab:
     st.subheader("L3 Job Ingestion")
-    url = st.text_input("Job URL", key="l3_url")
-    job_text = st.text_area("Job Description", height=220, key="l3_text")
-    if st.button("Ingest Job"):
-        try:
-            r = httpx.post(f"{api_url}/jobs/ingest", json={"url": url or None, "job_text": job_text}, timeout=30)
-            st.json(_safe_json(r))
-        except Exception as e:
-            st.error(str(e))
+    st.caption("Automatic discovery is enabled for 8 job sources (LinkedIn, Indeed, Wellfound, Dice, BuiltIn, Glassdoor, ZipRecruiter, USAJobs).")
+
+    manual_mode = st.toggle("Manual single-job ingest", value=False, key="l3_manual")
+    if manual_mode:
+        url = st.text_input("Job URL", key="l3_url")
+        job_text = st.text_area("Job Description", height=220, key="l3_text")
+        if st.button("Ingest Job"):
+            try:
+                r = httpx.post(f"{api_url}/jobs/ingest", json={"url": url or None, "job_text": job_text}, timeout=30)
+                st.json(_safe_json(r))
+            except Exception as e:
+                st.error(str(e))
+    else:
+        roles_default = st.session_state.get("l1_roles", "ML Engineer, Backend Engineer")
+        auto_roles = st.text_input("Target roles for auto-discovery (comma-separated)", value=roles_default, key="l3_roles")
+        auto_location = st.text_input("Location", value=st.session_state.get("l1_loc", "USA"), key="l3_loc")
+        c1, c2, c3 = st.columns(3)
+        with c1:
+            max_per_source = st.number_input("Max jobs/source", min_value=1, max_value=5, value=2, key="l3_mps")
+        with c2:
+            daily_limit = st.number_input("Daily ingest cap", min_value=1, max_value=60, value=20, key="l3_daily")
+        with c3:
+            recent_hours = st.number_input("Recent jobs within hours", min_value=1, max_value=240, value=36, key="l3_recent_hours")
+
+        if st.button("Auto-discover + ingest jobs", key="l3_auto"):
+            try:
+                payload = {
+                    "roles": [r.strip() for r in auto_roles.split(",") if r.strip()],
+                    "location": auto_location,
+                    "max_per_source": int(max_per_source),
+                    "daily_limit": int(daily_limit),
+                    "timeout_s": 10,
+                    "recent_hours": int(recent_hours),
+                }
+                r = httpx.post(f"{api_url}/jobs/discover_ingest", json=payload, timeout=120)
+                body = _safe_json(r)
+                st.json(body)
+                if isinstance(body, dict) and body.get("job_paths"):
+                    st.success(f"Ingested {len(body['job_paths'])} jobs automatically.")
+            except Exception as e:
+                st.error(str(e))
+
+with layer_tab:
+    st.subheader("Run Individual Layers (L4-L10)")
+    st.caption("Use this section for layer-wise debugging and manual progression.")
+    c1, c2, c3, c4 = st.columns(4)
+    if c1.button("L4 Match (latest profile + latest job)"):
+        st.json(_safe_json(httpx.post(f"{api_url}/match/run", timeout=60)))
+    top_n_ind = c2.number_input("L5 Top N", min_value=1, max_value=20, value=5, key="l5_top_n")
+    if c2.button("L5 Rank"):
+        st.json(_safe_json(httpx.post(f"{api_url}/rank/run", params={"top_n": int(top_n_ind)}, timeout=60)))
+    if c3.button("L6 Generate Package"):
+        st.json(_safe_json(httpx.post(f"{api_url}/generate/package", timeout=60)))
+    if c4.button("L7 Guardrails Validate"):
+        st.json(_safe_json(httpx.post(f"{api_url}/guardrails/validate", timeout=60)))
+
+    st.markdown("### L8-L10 + Post-apply tracking")
+    x1, x2, x3 = st.columns(3)
+    run_id_hitl = x1.text_input("Run ID (for HITL approval)", key="l10_run_id")
+    approved = x1.checkbox("Approved", value=False, key="l10_approved")
+    reviewer = x1.text_input("Reviewer", value="human", key="l10_reviewer")
+    if x1.button("L10 Save HITL Decision"):
+        payload = {"run_id": run_id_hitl, "approved": bool(approved), "reviewer": reviewer}
+        st.json(_safe_json(httpx.post(f"{api_url}/p22/approval/decision", json=payload, timeout=30)))
+
+    if x2.button("P10 Generate Followups"):
+        st.json(_safe_json(httpx.post(f"{api_url}/followups/generate", timeout=60)))
+    if x2.button("P11 Generate Notifications"):
+        st.json(_safe_json(httpx.post(f"{api_url}/notifications/generate", timeout=60)))
+
+    if x3.button("Load Applications Metrics"):
+        st.json(_safe_json(httpx.get(f"{api_url}/applications/metrics", timeout=30)))
+    if x3.button("Load Applications List"):
+        apps_resp = _safe_json(httpx.get(f"{api_url}/applications/list", timeout=30))
+        st.json(apps_resp)
+        items = apps_resp.get("items", []) if isinstance(apps_resp, dict) else []
+        if items:
+            import pandas as pd
+
+            df = pd.DataFrame(items)
+            csv = df.to_csv(index=False).encode("utf-8")
+            st.download_button("Download Applications CSV", data=csv, file_name="careeros_applications.csv", mime="text/csv")
 
 with pipeline_tab:
     st.subheader("One-Click Full Automation (L1→L10)")
@@ -192,6 +357,7 @@ with pipeline_tab:
         location = st.text_input("Discovery Location", value="USA", key="p25_location")
     with c3:
         daily_limit = st.number_input("Daily Job Cap", min_value=5, max_value=60, value=20, key="p25_cap")
+        recent_hours = st.number_input("Recent jobs within hours", min_value=1, max_value=240, value=36, key="p25_recent_hours")
         private_mode = st.checkbox("Private Mode", value=True, key="p25_priv")
 
     resume_upload = st.file_uploader("Upload Resume for Automation", type=["txt", "pdf", "docx", "png", "jpg", "jpeg", "webp", "bmp", "tiff"], key="p25_upload")
@@ -213,6 +379,7 @@ with pipeline_tab:
                         "location": location,
                         "daily_limit": int(daily_limit),
                         "private_mode": str(bool(private_mode)).lower(),
+                        "recent_hours": int(recent_hours),
                     }
                     resp = requests.post(f"{api_url}/p25/automation/run_upload_auto", files=files, data=data, timeout=300)
                     body = _safe_json(resp)
@@ -226,7 +393,7 @@ with pipeline_tab:
                             "auto_discover": True,
                             "daily_limit": int(daily_limit),
                             "max_per_source": 2,
-                            "preferences": {"roles": roles, "location": location},
+                            "preferences": {"roles": roles, "location": location, "recent_hours": int(recent_hours)},
                         },
                     }
                     resp = httpx.post(f"{api_url}/p25/automation/run", json=payload, timeout=300)
@@ -243,10 +410,23 @@ with pipeline_tab:
                     col_d.metric("Vector Backend", body.get("vector_store", {}).get("backend", "n/a"))
                     st.markdown("### Explainable Summary")
                     st.write(body.get("llm_summary", {}).get("text", "No summary generated."))
+                    rec = body.get("recommendation", {})
+                    qg = body.get("quality_gate", {})
+                    st.markdown("### Recommendation")
+                    st.write(f"Recommended: **{rec.get('recommended')}**")
+                    for why in rec.get("why_recommended", []):
+                        st.write(f"✅ {why}")
+                    for why_not in rec.get("why_not", []):
+                        st.write(f"⚠️ {why_not}")
+                    st.markdown("### Output Quality Gate")
+                    st.write(f"Status: **{qg.get('status', 'n/a')}**")
+                    for issue in qg.get("issues", []):
+                        st.write(f"- {issue}")
                     st.markdown("### HITL Decision")
                     st.write(f"Approval Required: **{hitl.get('approval_required')}**")
                     for reason in hitl.get("reasons", []):
                         st.write(f"- {reason}")
+                    _render_layer_timeline(body)
             except Exception as e:
                 st.error(f"Automation failed: {e}")
 
@@ -262,6 +442,34 @@ with outputs_tab:
     if st.button("Load Automation/Integrations Status"):
         try:
             s = httpx.get(f"{api_url}/system/automation/status", timeout=20)
+            st.json(_safe_json(s))
+        except Exception as e:
+            st.error(str(e))
+
+    if st.button("Load System Architecture Map"):
+        try:
+            s = httpx.get(f"{api_url}/system/architecture/map", timeout=20)
+            st.json(_safe_json(s))
+        except Exception as e:
+            st.error(str(e))
+
+    p25_run_id = st.text_input("Run ID for latest layer report (optional)", key="out_run_id")
+    if st.button("Load Latest P25 Layer Report"):
+        try:
+            params = {"run_id": p25_run_id.strip()} if p25_run_id.strip() else None
+            s = httpx.get(f"{api_url}/p25/automation/layers/latest", params=params, timeout=30)
+            body = _safe_json(s)
+            st.json(body)
+            if isinstance(body, dict) and body.get("layers"):
+                st.markdown("### P25 Layer Status")
+                for row in body.get("layers", []):
+                    st.write(f"- **{row.get('layer')}** → `{row.get('status')}`")
+        except Exception as e:
+            st.error(str(e))
+
+    if st.button("Share Latest Artifacts to transfer.sh"):
+        try:
+            s = httpx.post(f"{api_url}/artifacts/share/latest", json={}, timeout=90)
             st.json(_safe_json(s))
         except Exception as e:
             st.error(str(e))
