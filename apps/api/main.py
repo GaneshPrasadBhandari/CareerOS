@@ -120,6 +120,7 @@ from careeros.phase3.evaluator_v2 import evaluate_run_v2, latest_eval_v2, EvalWe
 from careeros.phase3.system_checks import run_system_health_checks
 from careeros.feedback.service import append_feedback, append_employer_signal, list_feedback
 from careeros.evidence.vector_store import vector_capabilities
+from careeros.integrations.job_boards.sources import discover_job_urls_for_roles
 
 
 # ------------------------------------------------------------------------------
@@ -370,6 +371,13 @@ def intake_bootstrap(req: IntakeBootstrapRequest):
         "intake_path": str(intake_path),
         "profile_path": str(profile_path),
         "skills": profile.skills,
+        "details": {
+            "message": "L1 intake and L2 profile bootstrap completed",
+            "candidate_name": req.candidate_name,
+            "target_roles": req.target_roles,
+            "location": req.location,
+            "jobs_discovery_ready": True,
+        },
     }
 
 
@@ -393,6 +401,69 @@ def ingest_job(req: JobIngestRequest):
     out_path = write_jobpost(job)
     log_event(logger, "job_ingested", run_id, path=str(out_path), keywords=len(job.keywords))
     return {"status": "ok", "path": str(out_path), "keywords": job.keywords, "run_id": run_id}
+
+
+class JobDiscoverIngestRequest(BaseModel):
+    roles: list[str] = Field(default_factory=list)
+    location: str = "USA"
+    max_per_source: int = Field(default=2, ge=1, le=5)
+    daily_limit: int = Field(default=20, ge=1, le=60)
+    timeout_s: int = Field(default=10, ge=4, le=45)
+
+
+@app.post("/jobs/discover_ingest")
+def jobs_discover_and_ingest(req: JobDiscoverIngestRequest):
+    run_id = new_run_id()
+    discovered = discover_job_urls_for_roles(
+        roles=req.roles,
+        location=req.location,
+        max_per_source=req.max_per_source,
+        daily_limit=req.daily_limit,
+    )
+    connector = connector_ingest({"urls": discovered.get("urls", []), "timeout_s": req.timeout_s})
+
+    ingested_paths: list[str] = []
+
+    # Always ingest discovered snippets first, so automation still works if remote pages block scraping.
+    for jt in discovered.get("job_texts", []):
+        raw_text = str(jt or "").strip()
+        if not raw_text:
+            continue
+        out_path = write_jobpost(build_jobpost_from_text(raw_text))
+        ingested_paths.append(str(out_path))
+
+    for item in connector.get("items", []):
+        raw_text = str(item.get("text") or "").strip()
+        if not raw_text:
+            continue
+        out_path = write_jobpost(build_jobpost_from_text(raw_text, url=item.get("url")))
+        ingested_paths.append(str(out_path))
+
+    status = "ok" if ingested_paths else "degraded"
+    log_event(
+        logger,
+        "jobs_discover_ingest_completed",
+        run_id,
+        discovered_urls=len(discovered.get("urls", [])),
+        ingested=len(ingested_paths),
+        status=status,
+    )
+    return {
+        "status": status,
+        "run_id": run_id,
+        "sources": discovered.get("sources", []),
+        "discovery": {
+            "status": discovered.get("status"),
+            "urls": discovered.get("urls", []),
+            "errors": discovered.get("errors", []),
+        },
+        "connector": {
+            "status": connector.get("status"),
+            "items_ingested": connector.get("items_ingested", 0),
+            "errors": connector.get("errors", []),
+        },
+        "job_paths": ingested_paths,
+    }
 
 
 # ------------------------------------------------------------------------------
