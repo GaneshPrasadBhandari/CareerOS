@@ -74,6 +74,22 @@ def render_docx(
 
     doc.add_paragraph("")  # spacer
 
+    # Full tailored resume
+    tr = getattr(pkg, "tailored_resume", None)
+    if tr:
+        doc.add_heading("Tailored Resume (Full Draft)", level=2)
+        if getattr(tr, "headline", None):
+            doc.add_paragraph(tr.headline)
+        if getattr(tr, "professional_summary", None):
+            doc.add_paragraph(tr.professional_summary)
+        skills = getattr(tr, "core_skills", []) or []
+        if skills:
+            doc.add_paragraph("Core Skills: " + ", ".join(skills))
+        for x in (getattr(tr, "experience_highlights", []) or []):
+            doc.add_paragraph(x, style="List Bullet")
+        for x in (getattr(tr, "projects_highlights", []) or []):
+            doc.add_paragraph(x, style="List Bullet")
+
     # Tailored bullets
     doc.add_heading("Tailored Resume Bullets", level=2)
     bullets = getattr(pkg, "bullets", []) or []
@@ -149,6 +165,22 @@ def render_pdf_from_package(
     write_line(f"Profile: {getattr(pkg, 'profile_path', '')}")
     write_line(f"Job: {getattr(pkg, 'job_path', '')}")
     y -= line_h
+
+    tr = getattr(pkg, "tailored_resume", None)
+    if tr:
+        write_line("Tailored Resume (Full Draft)", bold=True)
+        if getattr(tr, "headline", None):
+            write_line(tr.headline)
+        if getattr(tr, "professional_summary", None):
+            write_line(getattr(tr, "professional_summary"))
+        skills = getattr(tr, "core_skills", []) or []
+        if skills:
+            write_line("Core Skills: " + ", ".join(skills[:12]))
+        for x in (getattr(tr, "experience_highlights", []) or []):
+            write_line(f"• {x}")
+        for x in (getattr(tr, "projects_highlights", []) or []):
+            write_line(f"• {x}")
+        y -= line_h
 
     write_line("Tailored Resume Bullets", bold=True)
     bullets = getattr(pkg, "bullets", []) or []

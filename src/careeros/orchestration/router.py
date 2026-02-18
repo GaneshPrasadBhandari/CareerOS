@@ -14,7 +14,11 @@ def generate_summary_with_fallback(*, run_id: str, score: float) -> dict[str, An
     """
     ollama_base = os.getenv("OLLAMA_HOST", "http://127.0.0.1:11434")
     ollama_model = os.getenv("OLLAMA_SUMMARY_MODEL", "llama3")
-    prompt = f"Write 2 concise lines summarizing run {run_id} with match score {score}."
+    prompt = (
+        "You are CareerOS analyst. Provide a concise but deeper run summary in markdown with:\n"
+        "1) Match quality analysis\n2) Key risks/gaps\n3) Next 3 actions\n"
+        f"Run ID: {run_id}\nMatch score: {score:.2f}\n"
+    )
 
     try:
         r = httpx.post(
@@ -49,8 +53,10 @@ def generate_summary_with_fallback(*, run_id: str, score: float) -> dict[str, An
             pass
 
     summary = (
-        f"Run {run_id}: profile-job match completed with score {score:.2f}. "
-        "Generated package and guardrails status are available in run artifacts."
+        f"### Run {run_id}\n"
+        f"- Match score: **{score:.2f}**\n"
+        "- Pipeline completed parse -> ingest -> match -> rank -> generate -> guardrails.\n"
+        "- Suggested actions: improve missing skills alignment, review guardrails findings, send top applications with HITL approval."
     )
     return {
         "status": "ok",
