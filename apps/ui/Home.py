@@ -6,21 +6,71 @@ from urllib.parse import quote
 import httpx
 import requests
 import streamlit as st
+import os
 
 st.set_page_config(page_title="CareerOS", layout="wide")
 st.title("CareerOS — End-to-End Job Automation Dashboard")
 st.caption("L1 Intake → L2 Parse → L3 Discover/Ingest Jobs → L4 Match → L5 Rank → L6 Generate → L7 Guardrails → L8 Summary + Vector DB")
 
 
+# def _api_url() -> str:
+#     cloud_api_url = "https://careeros-backend-d9sc.onrender.com"
+#     try:
+#         cloud_api_url = st.secrets.get("API_URL") or st.secrets.get("BACKEND_URL") or cloud_api_url
+#     except Exception:
+#         pass
+#     if "api_url" not in st.session_state:
+#         st.session_state["api_url"] = cloud_api_url
+#     return st.session_state["api_url"]
+
 def _api_url() -> str:
-    cloud_api_url = "https://careeros-backend-d9sc.onrender.com"
-    try:
-        cloud_api_url = st.secrets.get("API_URL") or st.secrets.get("BACKEND_URL") or cloud_api_url
-    except Exception:
-        pass
+    """
+    Determines the Backend API URL based on the environment.
+    Priority: Environment Var -> Streamlit Secret -> Localhost
+    """
+    # 1. Try to get from Environment (Works on Render)
+    # 2. Try to get from Streamlit Secrets (Works on Streamlit Cloud)
+    # 3. Fallback to Localhost (Works on your MacBook)
+    default_url = os.getenv("API_URL") or st.secrets.get("API_URL") or "http://localhost:10000"
+    
     if "api_url" not in st.session_state:
-        st.session_state["api_url"] = cloud_api_url
+        st.session_state["api_url"] = default_url
+        
     return st.session_state["api_url"]
+
+# Define the constant globally so you can use it everywhere in the file
+API_URL = _api_url()
+
+
+
+
+# --- 1. System Status Logic ---
+def check_backend_status():
+    """Sidebar indicator for backend connectivity"""
+    with st.sidebar:
+        st.divider() # Visual separator
+        st.subheader("System Status")
+        try:
+            # Use a short timeout so the UI doesn't hang if the backend is down
+            response = requests.get(f"{API_URL}/health", timeout=3)
+            if response.status_code == 200:
+                st.success("🟢 Backend Online")
+                st.caption(f"Endpoint: {API_URL}")
+            else:
+                st.warning(f"🟠 Backend Issue ({response.status_code})")
+        except Exception:
+            st.error("🔴 Backend Offline")
+            st.info("Ensure the FastAPI server is running.")
+
+# --- 2. Run the check ---
+check_backend_status()
+
+# --- 3. Rest of your Home.py content ---
+st.title("CareerOS AI Agent")
+# ... your resume upload and other features go here
+
+
+
 
 
 
