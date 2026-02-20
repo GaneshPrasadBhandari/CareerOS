@@ -151,7 +151,7 @@ CareerOS consists of six major layers:
 - <span style="color:#ff4d6d;"><b>8.</b></span> Memory &amp; Models
 - <span style="color:#ff4d6d;"><b>9.</b></span> Governance &amp; Ops
 
-This is the only layout that will feel "right".
+
 </pre>
 
 
